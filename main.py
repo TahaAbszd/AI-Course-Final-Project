@@ -1,266 +1,324 @@
 import pygame
-import random
 import sys
-import time
+from typing import Optional, Tuple, List
+from collections import deque
+from game_settings import (
+    WIDTH, HEIGHT, GRID_SIZE, GRID_WIDTH, GRID_HEIGHT,
+    GameState, GameConfig, Snake, Food, Trap,
+    generate_spawn_positions, BLACK, WHITE, GREEN,
+    YELLOW, RED, PURPLE, GRID_COLOR, WALL_COLOR, DARK_GREEN, DARK_YELLOW, WALL_THICKNESS
+)
+from bot import RandomBot, GreedyBot, StrategicBot, CustomBot, UserBot
+from tournament import Tournament
 
-# Initialize pygame
-pygame.init()
-
-# Colors
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-RED = (255, 50, 50)
-GREEN = (50, 255, 50)
-DARK_GREEN = (0, 200, 0)
-BLUE = (50, 50, 255)
-
-# Game settings
-WIDTH, HEIGHT = 800, 600
-GRID_SIZE = 25
-GRID_WIDTH = WIDTH // GRID_SIZE
-GRID_HEIGHT = HEIGHT // GRID_SIZE
-SNAKE_SPEED = 12  # Frames per second
-MOVE_DELAY = 100  # Milliseconds between moves
-
-# Set up the display
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption('Enhanced Snake Game')
-clock = pygame.time.Clock()
-
-# Font
-font = pygame.font.SysFont('Arial', 25)
-large_font = pygame.font.SysFont('Arial', 50)
-
-class Snake:
-    def __init__(self, color_primary, color_secondary, start_x, start_y, agent_id="player"):
-        self.color_primary = color_primary
-        self.color_secondary = color_secondary
-        self.agent_id = agent_id
-        self.reset(start_x, start_y)
-        self.growth_amount = 8
-        self.tongue_timer = 0
-        self.tongue_length = 0
-
-    def reset(self, start_x, start_y):
-        # Start position aligned to the grid
-        self.segments = [[start_x // GRID_SIZE * GRID_SIZE, start_y // GRID_SIZE * GRID_SIZE]]
-        self.direction = 0  # 0: Right, 1: Down, 2: Left, 3: Up
-        self.next_direction = 0
-        self.speed = SNAKE_SPEED  # Speed per grid cell per second (will be used differently now)
-        self.move_timer = 0
-        self.move_interval = 1.0 / (self.speed / GRID_SIZE) # Time to move one grid cell
-        self.grow = 0
-        self.length = 1
-        self.alive = True
-        self.score = 0
-
-    def get_head_position(self):
-        return self.segments[0][:]
-
-    def get_body_positions(self):
-        return [segment[:] for segment in self.segments[1:]]
-
-    def update(self, dt):
-        if not self.alive:
-            return False
-
-        # Update tongue animation (remains the same)
-        self.tongue_timer += dt
-        if self.tongue_timer > 0.5:
-            self.tongue_timer = 0
-            self.tongue_length = 10 if random.random() > 0.7 else 0
-
-        self.move_timer += dt
-        if self.move_timer >= self.move_interval:
-            self.move_timer -= self.move_interval
-            self.direction = self.next_direction
-            head_x, head_y = self.segments[0]
-            new_head = list(self.segments[0])
-
-            if self.direction == 0:  # Right
-                new_head[0] += GRID_SIZE
-            elif self.direction == 1:  # Down
-                new_head[1] += GRID_SIZE
-            elif self.direction == 2:  # Left
-                new_head[0] -= GRID_SIZE
-            elif self.direction == 3:  # Up
-                new_head[1] -= GRID_SIZE
-
-            self.segments.insert(0, new_head)
-            if self.grow > 0:
-                self.grow -= 1
-                self.length += 1
-            else:
-                self.segments.pop()
-
-            # Check wall collision
-            head_x, head_y = self.segments[0]
-            if not (0 <= head_x < WIDTH and 0 <= head_y < HEIGHT):
-                self.alive = False
-                return False
-
-            # Check self collision
-            for segment in self.segments[1:]:
-                if self.segments[0] == segment:
-                    self.alive = False
-                    return False
-            return True
-        return True # Still alive, just hasn't moved a full grid cell yet
-
-    def change_direction(self, direction):
-        # Prevent immediate 180-degree turns
-        if (self.direction == 0 and direction == 2) or \
-           (self.direction == 2 and direction == 0) or \
-           (self.direction == 1 and direction == 3) or \
-           (self.direction == 3 and direction == 1):
-            return
-        self.next_direction = direction
-
-    def draw(self, surface):
-        for i, segment in enumerate(self.segments):
-            color_factor = i / self.length
-            color = (
-                int(self.color_primary[0] * (1 - color_factor) + self.color_secondary[0] * color_factor),
-                int(self.color_primary[1] * (1 - color_factor) + self.color_secondary[1] * color_factor),
-                int(self.color_primary[2] * (1 - color_factor) + self.color_secondary[2] * color_factor)
-            )
-            pygame.draw.rect(surface, color, (segment[0], segment[1], GRID_SIZE, GRID_SIZE))
-
-            # Draw head details (simplified for grid)
-            if i == 0:
-                center_x = segment[0] + GRID_SIZE // 2
-                center_y = segment[1] + GRID_SIZE // 2
-                eye_offset = GRID_SIZE // 4
-                eye_size = GRID_SIZE // 8
-
-                if self.direction == 0: # Right
-                    pygame.draw.circle(surface, WHITE, (center_x + eye_offset, center_y - eye_offset), eye_size)
-                    pygame.draw.circle(surface, WHITE, (center_x + eye_offset, center_y + eye_offset), eye_size)
-                elif self.direction == 1: # Down
-                    pygame.draw.circle(surface, WHITE, (center_x - eye_offset, center_y + eye_offset), eye_size)
-                    pygame.draw.circle(surface, WHITE, (center_x + eye_offset, center_y + eye_offset), eye_size)
-                elif self.direction == 2: # Left
-                    pygame.draw.circle(surface, WHITE, (center_x - eye_offset, center_y - eye_offset), eye_size)
-                    pygame.draw.circle(surface, WHITE, (center_x - eye_offset, center_y + eye_offset), eye_size)
-                elif self.direction == 3: # Up
-                    pygame.draw.circle(surface, WHITE, (center_x - eye_offset, center_y - eye_offset), eye_size)
-                    pygame.draw.circle(surface, WHITE, (center_x + eye_offset, center_y - eye_offset), eye_size)
-                    
-class Food:
+class SnakeGame:
     def __init__(self):
-        self.position = (0, 0)
-        self.spawn()
+        pygame.init()
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        pygame.display.set_caption("Snake Tournament")
+        self.clock = pygame.time.Clock()
         
-    def spawn(self, snake_body=None):
-        while True:
-            self.position = (
-                random.randint(0, GRID_WIDTH - 1), 
-                random.randint(0, GRID_HEIGHT - 1)
-            )
-            if snake_body is None or self.position not in snake_body:
-                break
-                
-    def draw(self, surface):
-        center = (
-            self.position[0] * GRID_SIZE + GRID_SIZE // 2,
-            self.position[1] * GRID_SIZE + GRID_SIZE // 2
-        )
-        # Draw apple-like food
-        pygame.draw.circle(surface, RED, center, GRID_SIZE // 2 - 2)
-        # Stem
-        pygame.draw.rect(
-            surface, 
-            DARK_GREEN, 
-            (center[0] - 2, center[1] - GRID_SIZE//2, 4, GRID_SIZE//4)
-        )
+        # Fonts
+        self.font = pygame.font.SysFont('Arial', 24)
+        self.medium_font = pygame.font.SysFont('Arial', 36)
+        self.large_font = pygame.font.SysFont('Arial', 60, bold=True)
+        
+        # Game state
+        self.config = GameConfig()
+        self.game_state = GameState.START
+        self.current_round = 1
+        self.round_winner: Optional[str] = None
+        self.final_winner: Optional[str] = None
+        
+        # Initialize tournament tracking
+        self.tournament = Tournament(self.config)
+        
+        # Tournament tracking
+        self.tournament.snake1_wins = 0
+        self.tournament.snake2_wins = 0
+        self.losers_bracket = []
+        self.rematches = []
+        
+        # Game objects
+        self.snake1: Optional[Snake] = None
+        self.snake2: Optional[Snake] = None
+        self.food: Optional[Food] = None
+        self.traps: Optional[Trap] = None
+    
+        # Initialize bots
+        # you can add your bots here...
+        self.bot1 = StrategicBot()  # Default AI
+        self.bot2 = GreedyBot()     # Default AI
+        # self.user_bot = UserBot()   # For human player
+        
+        # Initialize game
+        self.reset_round()
+    
+    def reset_round(self, swap_positions: bool = False) -> None:
+        """Initialize or reset the current round"""
+        spawn1, spawn2, layout = generate_spawn_positions()
 
-def draw_score(surface, score):
-    score_text = font.render(f"Score: {score}", True, WHITE)
-    surface.blit(score_text, (10, 10))
+        if swap_positions:
+            spawn1, spawn2 = spawn2, spawn1
 
-def game_over_screen(surface, score):
-    surface.fill(BLACK)
+        self.snake1 = Snake(GREEN, DARK_GREEN, *spawn1, self.bot1.name)
+        self.snake2 = Snake(YELLOW, DARK_YELLOW, *spawn2, self.bot2.name)
+
+        # Initialize food with positions from layout
+        self.food = Food(0)
+        self.food.positions = layout.copy()  
+
+        # Initialize traps
+        self.traps = Trap(self.config.trap_count)
+        self.traps.spawn_multiple(self.config.trap_count)
+
+        self.round_start_time = pygame.time.get_ticks() / 1000.0
     
-    game_over_text = large_font.render("GAME OVER", True, RED)
-    score_text = font.render(f"Final Score: {score}", True, WHITE)
-    restart_text = font.render("Press SPACE to restart", True, WHITE)
-    
-    surface.blit(game_over_text, (WIDTH//2 - game_over_text.get_width()//2, HEIGHT//2 - 60))
-    surface.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2))
-    surface.blit(restart_text, (WIDTH//2 - restart_text.get_width()//2, HEIGHT//2 + 60))
-    
-    pygame.display.update()
-    
-    waiting = True
-    while waiting:
+    def handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+                
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    waiting = False
-                elif event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit()
-
-def main():
-    snake = Snake()
-    food = Food()
-    score = 0
+                if event.key == pygame.K_SPACE and self.game_state in [
+                    GameState.START, GameState.GAME_OVER, GameState.DRAW
+                ]:
+                    self.start_new_tournament()
+                    
+                elif event.key == pygame.K_SPACE and self.game_state == GameState.ROUND_OVER:
+                    self.start_next_round()
     
-    running = True
-    while running:
-        current_time = pygame.time.get_ticks()
-        
-        # Event handling
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    snake.change_direction((0, -1))
-                elif event.key == pygame.K_DOWN:
-                    snake.change_direction((0, 1))
-                elif event.key == pygame.K_LEFT:
-                    snake.change_direction((-1, 0))
-                elif event.key == pygame.K_RIGHT:
-                    snake.change_direction((1, 0))
-        
-        # Game logic
-        if not snake.update(current_time):
-            game_over_screen(screen, score)
-            snake.reset()
-            food.spawn()
-            score = 0
-            continue
+    def check_collisions(self) -> None:
+        """Check all game collisions"""
+        # Check food collisions
+        if self.snake1.alive and self.food.check_collision(self.snake1.get_head_position()):
+            self.snake1.grow += self.config.growth_per_food
+            self.snake1.score += 1
+
+        if self.snake2.alive and self.food.check_collision(self.snake2.get_head_position()):
+            self.snake2.grow += self.config.growth_per_food
+            self.snake2.score += 1
+
+        # Check trap collisions
+        if self.snake1.alive:
+            self.traps.check_collision(self.snake1)
+        if self.snake2.alive:
+            self.traps.check_collision(self.snake2)
+
+        # Check snake collisions
+        if self.snake1.alive and self.snake2.alive:
+            self.snake1.check_collision_with_other(self.snake2)
+            self.snake2.check_collision_with_other(self.snake1)
+
+    def start_new_tournament(self) -> None:
+        """Reset everything for a new tournament"""
+        self.tournament = Tournament(self.config)
+        self.game_state = GameState.PLAYING
+        self.current_round = 1
+        self.reset_round()
+    
+    def start_next_round(self) -> None:
+        """Prepare for the next round in the tournament"""
+        swap = self.tournament.current_round > 1
+        self.reset_round(swap_positions=swap)
+        self.game_state = GameState.PLAYING
+    
+    def update(self) -> None:
+        """Update game state"""
+        if self.game_state != GameState.PLAYING:
+            return
             
-        # Check if snake eats food
-        if snake.body[0] == food.position:
-            snake.grow = True
-            food.spawn(snake.body)
-            score += 1
+        dt = self.clock.get_time() / 1000.0
         
-        # Drawing
-        screen.fill(BLACK)
+        # Update snakes using bot decisions
+        if self.snake1.alive:
+            move = self.bot1.decide_move(self.snake1, self.food, self.snake2)
+            self.snake1.change_direction(move)
+            self.snake1.update(dt)
+            
+        if self.snake2.alive:
+            move = self.bot2.decide_move(self.snake2, self.food, self.snake1)
+            self.snake2.change_direction(move)
+            self.snake2.update(dt)
         
-        # Draw border
-        pygame.draw.rect(
-            screen, 
-            BLUE, 
-            (0, 0, WIDTH, HEIGHT), 
-            GRID_SIZE//2
+        # Check collisions, traps, etc.
+        self.check_collisions()
+        
+        # Check round end conditions
+        if self.check_round_end():
+            self.handle_round_end()
+    
+    def check_round_end(self) -> bool:
+        """Check if round should end"""
+        elapsed = pygame.time.get_ticks() / 1000.0 - self.round_start_time
+        time_up = elapsed >= self.config.round_time
+        both_dead = not self.snake1.alive and not self.snake2.alive
+        no_food = len(self.food.positions) == 0
+        
+        return time_up or both_dead or no_food
+    
+    def handle_round_end(self) -> None:
+        """Process round end and tournament progression"""
+        # Determine winner
+        if self.snake1.score > self.snake2.score:
+            self.round_winner = self.snake1.agent_id
+        elif self.snake2.score > self.snake1.score:
+            self.round_winner = self.snake2.agent_id
+        else:
+            self.round_winner = None
+        
+        # Record results
+        self.tournament.record_round(
+            self.round_winner,
+            self.snake1.score,
+            self.snake2.score
         )
         
-        food.draw(screen)
-        snake.draw(screen)
-        draw_score(screen, score)
-        
-        pygame.display.update()
-        clock.tick(SNAKE_SPEED)
+        # Check tournament status
+        if self.tournament.is_tournament_over():
+            winner = self.tournament.get_winner()
+            if winner:
+                self.game_state = GameState.GAME_OVER
+            else:
+                self.game_state = GameState.DRAW
+        else:
+            self.game_state = GameState.ROUND_OVER
     
-    pygame.quit()
-    sys.exit()
+    def draw(self) -> None:
+        """Render all game elements"""
+        self.screen.fill(BLACK)
+        
+        if self.game_state == GameState.PLAYING:
+            self.draw_playing()
+        
+        elif self.game_state == GameState.START:
+            self.draw_start_screen()
+        
+        elif self.game_state == GameState.ROUND_OVER:
+            self.draw_round_over()
+            
+        elif self.game_state in (GameState.GAME_OVER, GameState.DRAW):
+            self.draw_tournament_end()
+        
+        pygame.display.flip()
+        
+    def draw_playing(self) -> None:
+        """Draw the main game screen"""
+        # Draw grid
+        for x in range(0, WIDTH, GRID_SIZE):
+            pygame.draw.line(self.screen, GRID_COLOR, (x, 0), (x, HEIGHT))
+        for y in range(0, HEIGHT, GRID_SIZE):
+            pygame.draw.line(self.screen, GRID_COLOR, (0, y), (WIDTH, y))
+        pygame.draw.rect(self.screen, WALL_COLOR, (0, 0, WIDTH, HEIGHT), WALL_THICKNESS)
+        
+        # Draw game objects
+        self.food.draw(self.screen)
+        self.traps.draw(self.screen)
+        self.snake1.draw(self.screen)
+        self.snake2.draw(self.screen)
+        
+        # Draw HUD
+        elapsed = pygame.time.get_ticks() / 1000.0 - self.round_start_time
+        time_left = max(0, self.config.round_time - elapsed)
+        self.draw_scores(time_left)
+    
+    def draw_scores(self, time_left: float) -> None:
+        """Draw score and tournament information"""
+        score1_text = f"{self.snake1.agent_id}: {self.snake1.score}"
+        score2_text = f"{self.snake2.agent_id}: {self.snake2.score}"
+        round_text = f"Round {self.current_round}/{self.config.max_rounds}"
+        time_text = f"Time: {int(time_left)}s"
+        
+        # Render text surfaces
+        score1_surface = self.font.render(score1_text, True, GREEN)
+        score2_surface = self.font.render(score2_text, True, YELLOW)
+        round_surface = self.font.render(round_text, True, WHITE)
+        time_surface = self.font.render(time_text, True, WHITE)
+        
+        # Position and draw text
+        self.screen.blit(score1_surface, (10, 10))
+        self.screen.blit(score2_surface, (WIDTH - score2_surface.get_width() - 10, 10))
+        self.screen.blit(round_surface, (WIDTH // 2 - round_surface.get_width() // 2, 10))
+        self.screen.blit(time_surface, (WIDTH // 2 - time_surface.get_width() // 2, HEIGHT - 30))
+
+    def draw_start_screen(self) -> None:
+        """Draw the game start screen"""
+        title = self.large_font.render("Snake Tournament", True, GREEN)
+        instruction = self.medium_font.render("Press SPACE to begin", True, WHITE)
+        controls = self.font.render("Use arrow keys for human player", True, WHITE)
+        
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 3))
+        self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2))
+        self.screen.blit(controls, (WIDTH // 2 - controls.get_width() // 2, HEIGHT // 2 + 50))
+
+    def draw_round_over(self) -> None:
+        """Draw the round over screen"""
+        title = self.large_font.render(f"Round {self.tournament.current_round - 1} Over", True, WHITE)
+        
+        if self.round_winner:
+            result = self.medium_font.render(f"{self.round_winner} wins!", 
+                                           True, GREEN if self.round_winner == self.snake1.agent_id else YELLOW)
+        else:
+            result = self.medium_font.render("Draw!", True, WHITE)
+            
+        score_text = self.font.render(
+            f"{self.snake1.agent_id}: {self.snake1.score}  |  {self.snake2.agent_id}: {self.snake2.score}", 
+            True, WHITE
+        )
+        instruction = self.font.render("Press SPACE to continue", True, WHITE)
+        
+        # Tournament progress - use tournament's win counts
+        progress = self.font.render(
+            f"Tournament: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
+            True, WHITE
+        )
+        
+        # Position and draw elements
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
+        self.screen.blit(result, (WIDTH // 2 - result.get_width() // 2, HEIGHT // 2 - 50))
+        self.screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2))
+        self.screen.blit(progress, (WIDTH // 2 - progress.get_width() // 2, HEIGHT // 2 + 30))
+        self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 80))
+
+    def draw_tournament_end(self) -> None:
+        """Draw the tournament end screen"""
+        title = self.large_font.render("Tournament Over", True, RED)
+        winner_text = self.medium_font.render(f"{self.final_winner} Wins!", 
+                                            True, GREEN if self.final_winner == self.snake1.agent_id else YELLOW)
+        score_text = self.font.render(
+            f"Final Score: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
+            True, WHITE
+        )
+        instruction = self.font.render("Press SPACE to play again", True, WHITE)
+        
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
+        self.screen.blit(winner_text, (WIDTH // 2 - winner_text.get_width() // 2, HEIGHT // 2 - 30))
+        self.screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 + 10))
+        self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 60))
+
+    def draw_draw_screen(self) -> None:
+        """Draw the tournament draw screen"""
+        title = self.large_font.render("Tournament Draw!", True, YELLOW)
+        score_text = self.font.render(
+            f"Final Score: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
+            True, WHITE
+        )
+        instruction = self.font.render("Press SPACE to play again", True, WHITE)
+        
+        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 3))
+        self.screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2))
+        self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 50))
+
+    
+    def run(self) -> None:
+        """Main game loop"""
+        while True:
+            self.handle_events()
+            self.update()
+            self.draw()
+            self.clock.tick(60)
 
 if __name__ == "__main__":
-    main()
+    game = SnakeGame()
+    game.run()
