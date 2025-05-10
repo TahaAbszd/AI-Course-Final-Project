@@ -3,6 +3,7 @@ import random
 import sys
 import copy
 import math
+from collections import deque
 
 # --- Initialization ---
 pygame.init()
@@ -14,8 +15,12 @@ GRID_HEIGHT = HEIGHT // GRID_SIZE
 SNAKE_SPEED = 10  # Grid cells per second
 WALL_THICKNESS = 10  # Thicker walls
 
+TOURNAMENT_MODE = True
+MAX_ROUNDS = 3
+ROUND_TIME = 120
+
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Grid Snake Showdown")
+pygame.display.set_caption("Snake Tournament")
 clock = pygame.time.Clock()
 
 # --- Colors ---
@@ -26,8 +31,10 @@ DARK_GREEN = (0, 200, 0)
 YELLOW = (255, 255, 0)
 DARK_YELLOW = (200, 200, 0)
 RED = (255, 50, 50)
+PURPLE = (150, 50, 200)
 GRID_COLOR = (40, 40, 40)
 WALL_COLOR = (50, 50, 100)
+SHIELD_BLUE = (100, 100, 255)
 
 # --- Fonts ---
 font = pygame.font.SysFont('Arial', 24)
@@ -37,11 +44,6 @@ medium_font = pygame.font.SysFont('Arial', 36)
 # --- Game States ---
 START, PLAYING, GAME_OVER, DRAW, ROUND_OVER = "start", "playing", "game_over", "draw", "round_over"
 
-game_state = START
-current_round = 1
-snake1_wins = 0
-snake2_wins = 0
-round_winner = None
 
 class Snake:
     def __init__(self, color_primary, color_secondary, start_x, start_y, agent_id="player"):
@@ -54,11 +56,12 @@ class Snake:
         self.tongue_length = 0
         self.direction = (1, 0)  # Right by default
         self.next_direction = (1, 0)
+        self.shield_timer = 0
+        self.shield_flash = 0
 
     def reset(self, start_x, start_y):
-        self.segments = []
-        self.segments.append([start_x, start_y])
-        self.direction = (1, 0)  # Right by default
+        self.segments = deque([[start_x, start_y]])
+        self.direction = (1, 0)
         self.next_direction = (1, 0)
         self.speed = SNAKE_SPEED
         self.grow = 0
@@ -66,6 +69,7 @@ class Snake:
         self.alive = True
         self.score = 0
         self.move_timer = 0
+        self.shield_timer = 0
 
     def get_head_position(self):
         return self.segments[0][:]
@@ -77,13 +81,12 @@ class Snake:
         if not self.alive:
             return False
 
-        # Update tongue animation
-        self.tongue_timer += dt
-        if self.tongue_timer > 0.5:  # Every 0.5 seconds
-            self.tongue_timer = 0
-            self.tongue_length = 10 if random.random() > 0.7 else 0  # 30% chance to show tongue
+        # Update shield
+        if self.shield_timer > 0:
+            self.shield_timer -= dt
+            self.shield_flash = (self.shield_flash + dt * 10) % 1
 
-        # Grid-based movement with timer
+        # Movement
         self.move_timer += dt
         move_interval = 1.0 / self.speed
         
@@ -91,20 +94,19 @@ class Snake:
             self.move_timer = 0
             self.direction = self.next_direction
             
-            # Calculate new head position (REMOVED MODULO FOR WRAPPING)
             head_x, head_y = self.segments[0]
             new_head = [
-                head_x + self.direction[0],  # Removed modulo
-                head_y + self.direction[1]   # Removed modulo
+                head_x + self.direction[0],
+                head_y + self.direction[1]
             ]
             
-            # Check wall collision (now works properly)
+            # Wall collision
             if (new_head[0] < 0 or new_head[0] >= GRID_WIDTH or 
                 new_head[1] < 0 or new_head[1] >= GRID_HEIGHT):
                 self.alive = False
                 return False
 
-            self.segments.insert(0, new_head)
+            self.segments.appendleft(new_head)
 
             if self.grow > 0:
                 self.grow -= 1
@@ -112,8 +114,8 @@ class Snake:
             else:
                 self.segments.pop()
 
-            # Check self collision
-            for segment in self.segments[1:]:
+            # Self collision
+            for segment in list(self.segments)[1:]:
                 if new_head == segment:
                     self.alive = False
                     return False
@@ -121,12 +123,34 @@ class Snake:
         return True
     
     def check_collision_with_other(self, other_snake):
-        if not self.segments or not other_snake.segments:
+        if not self.segments or not other_snake.segments or self.shield_timer > 0 or other_snake.shield_timer > 0:
             return False
-            
+
         head = self.segments[0]
-        for segment in other_snake.segments:
+        other_head = other_snake.segments[0]
+
+        # Head-to-head collision
+        if head == other_head:
+            if self.score > other_snake.score:
+                other_snake.score = max(0, other_snake.score - 3)
+                other_snake.length = max(3, other_snake.length - 1)
+                other_snake.shield_timer = 2.0  # 2 seconds of immunity
+                if other_snake.length < len(other_snake.segments):
+                    other_snake.segments.pop()
+            elif other_snake.score > self.score:
+                self.score = max(0, self.score - 3)
+                self.length = max(3, self.length - 1)
+                self.shield_timer = 2.0
+                if self.length < len(self.segments):
+                    self.segments.pop()
+            else:  # Equal scores -> both die
+                self.alive = other_snake.alive = False
+            return True
+
+        # Body collision
+        for segment in list(other_snake.segments)[1:]:
             if head == segment:
+                self.alive = False
                 return True
         return False
     
@@ -144,6 +168,14 @@ class Snake:
             pixel_x = segment[0] * GRID_SIZE + GRID_SIZE // 2
             pixel_y = segment[1] * GRID_SIZE + GRID_SIZE // 2
 
+            if self.shield_timer > 0 and self.shield_flash < 0.5:
+                shield_color = SHIELD_BLUE
+                pygame.draw.circle(
+                    surface, shield_color,
+                    (pixel_x, pixel_y), 
+                    GRID_SIZE//2 + 2, 2
+                )
+                
             # Draw body or head
             if i == 0:  # Head with pointy nose
                 cx, cy = pixel_x, pixel_y
@@ -198,24 +230,20 @@ class Food:
     def spawn(self, snake_segments=None):
         while True:
             position = [
-                random.randint(0, GRID_WIDTH - 1),
-                random.randint(0, GRID_HEIGHT - 1)
+                random.randint(1, GRID_WIDTH - 2),
+                random.randint(1, GRID_HEIGHT - 2)
             ]
-            is_colliding = False
-            if snake_segments:
-                for segment in snake_segments:
-                    if position == [segment[0], segment[1]]:
-                        is_colliding = True
-                        break
-            if not is_colliding and position not in self.positions:
+            if snake_segments and any(position == [s[0], s[1]] for s in snake_segments):
+                continue
+            if position not in self.positions:
                 return position
 
     def spawn_multiple(self, snake_segments=None):
         self.positions = []
         for _ in range(self.num_foods):
-            new_food_position = self.spawn(snake_segments)
-            if new_food_position:
-                self.positions.append(new_food_position)
+            pos = self.spawn(snake_segments)
+            if pos:
+                self.positions.append(pos)
 
     def check_collision(self, head_position):
         for i, pos in enumerate(self.positions):
@@ -242,6 +270,83 @@ class Food:
                 DARK_GREEN,
                 (pixel_x - 2, pixel_y - GRID_SIZE//2, 4, GRID_SIZE//4)
             )
+            
+class Trap:
+    def __init__(self, num_traps=3):
+        self.num_traps = num_traps
+        self.positions = []
+        self.penalty = 2
+        self.spawn_multiple()
+
+    def spawn(self, snake_segments=None):
+        while True:
+            position = [
+                random.randint(1, GRID_WIDTH - 2),
+                random.randint(1, GRID_HEIGHT - 2)
+            ]
+            if snake_segments and any(position == [s[0], s[1]] for s in snake_segments):
+                continue
+            if position not in self.positions:
+                return position
+
+    def spawn_multiple(self, snake_segments=None):
+        self.positions = []
+        for _ in range(self.num_traps):
+            pos = self.spawn(snake_segments)
+            if pos:
+                self.positions.append(pos)
+
+    def check_collision(self, snake):
+        head = snake.get_head_position()
+        for i, pos in enumerate(self.positions):
+            if head == [pos[0], pos[1]]:
+                snake.score = max(0, snake.score - self.penalty)
+                if snake.length > 3:
+                    snake.segments.pop()
+                    snake.length -= 1
+                return True
+        return False
+
+    def draw(self, surface):
+        for pos in self.positions:
+            pixel_x = pos[0] * GRID_SIZE + GRID_SIZE // 2
+            pixel_y = pos[1] * GRID_SIZE + GRID_SIZE // 2
+            pygame.draw.circle(
+                surface, PURPLE,
+                (pixel_x, pixel_y), 
+                GRID_SIZE//3
+            )
+            pygame.draw.line(
+                surface, BLACK,
+                (pixel_x - GRID_SIZE//4, pixel_y - GRID_SIZE//4),
+                (pixel_x + GRID_SIZE//4, pixel_y + GRID_SIZE//4),
+                3
+            )
+            pygame.draw.line(
+                surface, BLACK,
+                (pixel_x + GRID_SIZE//4, pixel_y - GRID_SIZE//4),
+                (pixel_x - GRID_SIZE//4, pixel_y + GRID_SIZE//4),
+                3
+            )
+
+            
+        
+def check_collision_with_other(self, other_snake):
+    if not self.segments or not other_snake.segments:
+        return False
+        
+    head = self.segments[0]
+    if head == other_snake.segments[0]:  # Head-to-head
+        if self.score > other_snake.score:
+            other_snake.score = max(0, other_snake.score - 3)
+            other_snake.shield_timer = 3.0  # 3-second shield
+        elif other_snake.score > self.score:
+            self.score = max(0, self.score - 3)
+            self.shield_timer = 3.0
+        else:  # Equal scores -> both die
+            self.alive = other_snake.alive = False
+        return True
+    return False    
 
 def get_distance(pos1, pos2):
     return math.hypot(pos1[0] - pos2[0], pos1[1] - pos2[1])
@@ -251,7 +356,7 @@ def is_safe(snake, new_head_pos, other_snake=None):
     if not (0 <= new_head_pos[0] < GRID_WIDTH and 0 <= new_head_pos[1] < GRID_HEIGHT):
         return False
     # Check self-collision (excluding the neck)
-    for segment in snake.segments[1:]:
+    for segment in list(snake.segments)[1:]:
         if new_head_pos == segment:
             return False
     # Check collision with other snake
@@ -384,12 +489,13 @@ def agent_logic_player_2(snake, food, other_snake=None):
 
     return best_move
 
-
-
 # --- Random spawn positions and fruits ---
 def generate_spawn_and_fruit_layout():
     s1 = (random.randint(1, GRID_WIDTH - 2), random.randint(1, GRID_HEIGHT - 2))
     s2 = (random.randint(1, GRID_WIDTH - 2), random.randint(1, GRID_HEIGHT - 2))
+    while get_distance(s1, s2) < 5:  # Ensure snakes spawn apart
+        s2 = (random.randint(1, GRID_WIDTH - 2), random.randint(1, GRID_HEIGHT - 2))
+    
     fruit_positions = []
     while len(fruit_positions) < 30:
         pos = (random.randint(1, GRID_WIDTH - 2), random.randint(1, GRID_HEIGHT - 2))
@@ -398,7 +504,7 @@ def generate_spawn_and_fruit_layout():
     return s1, s2, fruit_positions
 
 
-def draw_scores(surface, snake1_wins, snake2_wins, snake1_score=None, snake2_score=None):
+def draw_scores(surface, snake1_wins, snake2_wins, snake1_score=None, snake2_score=None, time_left=None):
     if snake1_score is not None and snake2_score is not None:
         score1_text = f"Agent 1: Wins {snake1_wins} | Fruits: {snake1_score}"
         score2_text = f"Agent 2: Wins {snake2_wins} | Fruits: {snake2_score}"
@@ -411,21 +517,28 @@ def draw_scores(surface, snake1_wins, snake2_wins, snake1_score=None, snake2_sco
     surface.blit(score1, (10, 10))
     surface.blit(score2, (WIDTH - score2.get_width() - 10, 10))
 
+    if time_left is not None:
+        time_text = font.render(f"Time: {int(time_left)}s", True, WHITE)
+        surface.blit(time_text, (WIDTH//2 - time_text.get_width()//2, 10))
+
 def draw_start_screen():
     screen.fill(BLACK)
-    title = large_font.render("Grid Snake Showdown", True, GREEN)
+    title = large_font.render("Snake Tournament", True, GREEN)
     instruction = medium_font.render("Press SPACE to begin", True, WHITE)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 3))
-    screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 50))
+    controls = font.render("Agent 1: WASD | Agent 2: Arrow Keys", True, WHITE)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//3))
+    screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2))
+    screen.blit(controls, (WIDTH//2 - controls.get_width()//2, HEIGHT//2 + 50))
 
-def draw_round_over_screen(round_winner, snake1_wins, snake2_wins, snake1_score, snake2_score):
+
+def draw_round_over_screen(round_winner, snake1_wins, snake2_wins, snake1_score, snake2_score, round_num):
     screen.fill(BLACK)
-    title = large_font.render(f"Round {current_round} Over", True, WHITE)
+    title = large_font.render(f"Round {round_num} Over", True, WHITE)
     if round_winner:
-        result = medium_font.render(f"{round_winner} wins the round!", True, GREEN if round_winner == "Agent 1" else YELLOW)
+        result = medium_font.render(f"{round_winner} wins!", True, GREEN if round_winner == "Agent 1" else YELLOW)
     else:
-        result = medium_font.render("Round Draw!", True, YELLOW)
-    fruits_text = font.render(f"Agent 1 ate {snake1_score} fruits | Agent 2 ate {snake2_score} fruits", True, WHITE)
+        result = medium_font.render("Draw!", True, YELLOW)
+    fruits_text = font.render(f"Agent 1: {snake1_score} fruits | Agent 2: {snake2_score} fruits", True, WHITE)
     instruction = font.render("Press SPACE to continue", True, WHITE)
     
     screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
@@ -434,41 +547,56 @@ def draw_round_over_screen(round_winner, snake1_wins, snake2_wins, snake1_score,
     screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2 + 50))
     draw_scores(screen, snake1_wins, snake2_wins)
 
+
 def draw_game_over_screen(winner, snake1_wins, snake2_wins):
     screen.fill(BLACK)
-    title = large_font.render("Game Over", True, RED)
-    result_text = medium_font.render(f"{winner} Wins!", True, WHITE)
+    title = large_font.render("Tournament Over", True, RED)
+    result_text = medium_font.render(f"{winner} Wins!", True, GREEN if winner == "Agent 1" else YELLOW)
+    score_text = font.render(f"Final Score: {snake1_wins}-{snake2_wins}", True, WHITE)
     instruction = font.render("Press SPACE to play again", True, WHITE)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
-    screen.blit(result_text, (WIDTH // 2 - result_text.get_width() // 2, HEIGHT // 2))
-    screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 60))
-    draw_scores(screen, snake1_wins, snake2_wins)
-
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
+    screen.blit(result_text, (WIDTH//2 - result_text.get_width()//2, HEIGHT//2 - 50))
+    screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2))
+    screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2 + 50))
+    
+    
 def draw_draw_screen(snake1_wins, snake2_wins):
     screen.fill(BLACK)
-    title = large_font.render("Draw!", True, YELLOW)
-    instruction = font.render("Press SPACE to replay", True, WHITE)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 3))
-    screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 60))
-    draw_scores(screen, snake1_wins, snake2_wins)
-
+    title = large_font.render("Tournament Draw!", True, YELLOW)
+    score_text = font.render(f"Final Score: {snake1_wins}-{snake2_wins}", True, WHITE)
+    instruction = font.render("Press SPACE to play again", True, WHITE)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//3))
+    screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2))
+    screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2 + 50))
+    
+    
 def main():
     global game_state, current_round, snake1_wins, snake2_wins, round_winner
 
+    # Tournament variables
+    game_state = START
+    current_round = 1
+    snake1_wins = 0
+    snake2_wins = 0
+    round_winner = None
+    round_start_time = 0
+    losers_bracket = []
+    rematches = []
+
     spawn1, spawn2, layout = generate_spawn_and_fruit_layout()
 
-    def init_round(rnd):
-        if rnd == 1:
-            s1 = Snake(GREEN, DARK_GREEN, *spawn1, "Agent 1")
-            s2 = Snake(YELLOW, DARK_YELLOW, *spawn2, "Agent 2")
-        else:
-            s1 = Snake(GREEN, DARK_GREEN, *spawn2, "Agent 1")
-            s2 = Snake(YELLOW, DARK_YELLOW, *spawn1, "Agent 2")
+    def init_round(rnd, swap_positions=False):
+        nonlocal spawn1, spawn2
+        if swap_positions:
+            spawn1, spawn2 = spawn2, spawn1
+        s1 = Snake(GREEN, DARK_GREEN, *spawn1, "Agent 1")
+        s2 = Snake(YELLOW, DARK_YELLOW, *spawn2, "Agent 2")
         f = Food(0)
+        t = Trap(3)  
         f.positions = copy.deepcopy(layout)
-        return s1, s2, f
+        return s1, s2, f, t
 
-    snake1, snake2, food = init_round(current_round)
+    snake1, snake2, food, traps = init_round(current_round)
     last_time = pygame.time.get_ticks()
 
     while True:
@@ -486,16 +614,26 @@ def main():
                     snake1_wins = 0
                     snake2_wins = 0
                     spawn1, spawn2, layout = generate_spawn_and_fruit_layout()
-                    snake1, snake2, food = init_round(current_round)
+                    snake1, snake2, food, traps = init_round(current_round)
+                    round_start_time = last_time / 1000.0
+                    
                 elif game_state == ROUND_OVER:
                     current_round += 1
-                    snake1, snake2, food = init_round(current_round)
+                    snake1, snake2, food, traps = init_round(current_round, True)
                     game_state = PLAYING
+                    round_start_time = last_time / 1000.0
+
+        losers_bracket = []
+        if game_state == ROUND_OVER and not round_winner:
+            losers_bracket.append(snake1 if snake1.score < snake2.score else snake2)
 
         if game_state == START:
             draw_start_screen()
 
         elif game_state == PLAYING:
+            elapsed_time = last_time / 1000.0 - round_start_time
+            time_left = max(0, ROUND_TIME - elapsed_time)
+    
             # Update snakes
             snake1_alive = snake1.alive
             snake2_alive = snake2.alive
@@ -514,87 +652,80 @@ def main():
                     snake2.grow += 3
                     snake2.score += 1
 
+            if snake1.alive:
+                traps.check_collision(snake1)
+            if snake2.alive:
+                traps.check_collision(snake2)
+                
             if snake1.alive and snake2.alive:
-                if snake1.check_collision_with_other(snake2):
-                    snake1.alive = False
-                if snake2.check_collision_with_other(snake1):
-                    snake2.alive = False
+                snake1.check_collision_with_other(snake2)
+                snake2.check_collision_with_other(snake1)
                     
-            elif len(food.positions) == 0:
-                # Capture current scores
-                current_snake1_score = snake1.score
-                current_snake2_score = snake2.score
-                
-                # Determine round winner based on scores
-                if current_snake1_score > current_snake2_score:
+            
+            # Check round end conditions
+            round_over = False
+            if time_left <= 0 or (not snake1.alive and not snake2.alive) or len(food.positions) == 0:
+                round_over = True
+            
+            if round_over:
+                # Determine round winner
+                if snake1.score > snake2.score:
                     round_winner = "Agent 1"
                     snake1_wins += 1
-                elif current_snake2_score > current_snake1_score:
+                elif snake2.score > snake1.score:
                     round_winner = "Agent 2"
                     snake2_wins += 1
                 else:
-                    round_winner = None  # Draw
-                
-                # Transition to next state based on current round
-                if current_round == 1:
-                    game_state = ROUND_OVER
-                    round_snake1_score = current_snake1_score
-                    round_snake2_score = current_snake2_score
-                else:
-                    if snake1_wins > snake2_wins:
-                        game_state = GAME_OVER
-                        final_winner = "Agent 1"
-                    elif snake2_wins > snake1_wins:
-                        game_state = GAME_OVER
-                        final_winner = "Agent 2"
-                    else:
-                        game_state = DRAW
-
-            if not snake1.alive or not snake2.alive:
-                current_snake1_score = snake1.score
-                current_snake2_score = snake2.score
-
-                both_dead = not snake1.alive and not snake2.alive
-
-                # Check if the dead snake has *already* been outscored
-                if not snake1.alive and (both_dead or current_snake1_score <= current_snake2_score):
-                    round_winner = "Agent 2"
-                    snake2_wins += 1
-                    round_over = True
-                elif not snake2.alive and (both_dead or current_snake2_score <= current_snake1_score):
-                    round_winner = "Agent 1"
-                    snake1_wins += 1
-                    round_over = True
-                else:
-                    # Round continues: the alive snake still has a chance to win
-                    round_over = False
-
-                if round_over:
-                    if current_round == 1:
-                        game_state = ROUND_OVER
-                    else:
-                        if snake1_wins > snake2_wins:
-                            game_state = GAME_OVER
-                            final_winner = "Agent 1"
-                        elif snake2_wins > snake1_wins:
-                            game_state = GAME_OVER
-                            final_winner = "Agent 2"
+                    round_winner = None
+                    if TOURNAMENT_MODE:
+                        losers_bracket.append((snake1, snake2, food, traps))
+                            
+            # Check tournament progression
+                if TOURNAMENT_MODE:
+                    if current_round >= MAX_ROUNDS:
+                        if snake1_wins == snake2_wins and len(losers_bracket) > 0:
+                            # Play tiebreaker from losers bracket
+                            rematches = losers_bracket.copy()
+                            losers_bracket = []
+                            current_round = 1
+                            snake1, snake2, food, traps = rematches.pop()
+                            round_start_time = last_time / 1000.0
                         else:
-                            game_state = DRAW
+                            # Tournament over
+                            if snake1_wins > snake2_wins:
+                                game_state = GAME_OVER
+                                final_winner = "Agent 1"
+                            elif snake2_wins > snake1_wins:
+                                game_state = GAME_OVER
+                                final_winner = "Agent 2"
+                            else:
+                                game_state = DRAW
+                    else:
+                        game_state = ROUND_OVER
+                else:
+                    game_state = ROUND_OVER
 
+            # Draw everything
             screen.fill(BLACK)
+            # Draw grid
             for x in range(0, WIDTH, GRID_SIZE):
                 pygame.draw.line(screen, GRID_COLOR, (x, 0), (x, HEIGHT))
             for y in range(0, HEIGHT, GRID_SIZE):
                 pygame.draw.line(screen, GRID_COLOR, (0, y), (WIDTH, y))
-            pygame.draw.rect(screen, WALL_COLOR, (0, 0, WIDTH, HEIGHT), 10)
+            pygame.draw.rect(screen, WALL_COLOR, (0, 0, WIDTH, HEIGHT), WALL_THICKNESS)
+            
+            # Draw game elements
             food.draw(screen)
+            traps.draw(screen)
             snake1.draw(screen)
             snake2.draw(screen)
-            draw_scores(screen, snake1_wins, snake2_wins, snake1.score, snake2.score)
+            draw_scores(screen, snake1_wins, snake2_wins, snake1.score, snake2.score, time_left)
 
         elif game_state == ROUND_OVER:
-            draw_round_over_screen(round_winner, snake1_wins, snake2_wins, round_snake1_score, round_snake2_score)
+            draw_round_over_screen(
+                round_winner, snake1_wins, snake2_wins, 
+                snake1.score, snake2.score, current_round
+            )
 
         elif game_state == GAME_OVER:
             draw_game_over_screen(final_winner, snake1_wins, snake2_wins)
