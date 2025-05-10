@@ -39,13 +39,14 @@ class GameConfig:
     tournament_mode: bool = True
     max_rounds: int = 3
     round_time: int = 120
-    trap_count: int = 3
-    trap_penalty: int = 2
+    trap_count: int = 10
+    trap_penalty: int = 3
     head_collision_penalty: int = 3
     shield_duration: float = 2.0
     initial_food: int = 30
     growth_per_food: int = 3
     min_snake_length: int = 3
+    
 
 class Direction:
     RIGHT = (1, 0)
@@ -139,10 +140,10 @@ class Snake(GameObject):
     def check_collision_with_other(self, other_snake: 'Snake') -> bool:
         if not self.segments or not other_snake.segments or self.shield_timer > 0 or other_snake.shield_timer > 0:
             return False
-    
+
         head = self.segments[0]
         other_head = other_snake.segments[0]
-    
+
         # Head-to-head collision
         if head == other_head:
             if self.score > other_snake.score:
@@ -169,7 +170,7 @@ class Snake(GameObject):
                 if other_snake.length < len(other_snake.segments):
                     other_snake.segments.pop()
             return True
-    
+
         # Body collision
         for segment in list(other_snake.segments)[1:]:
             if head == segment:
@@ -316,7 +317,9 @@ class Trap(GameObject):
         self.num_traps = num_traps
         self.positions: List[Tuple[int, int]] = []
 
-    def spawn(self, snake_segments: Optional[List[List[int]]] = None) -> Optional[Tuple[int, int]]:
+    def spawn(self, 
+          snake_segments: Optional[List[List[int]]] = None,
+          food_positions: Optional[List[Tuple[int, int]]] = None) -> Optional[Tuple[int, int]]:
         """Spawn a single trap in a valid position"""
         attempts = 0
         max_attempts = 100
@@ -332,17 +335,24 @@ class Trap(GameObject):
             if snake_segments and any(position == (seg[0], seg[1]) for seg in snake_segments):
                 continue
 
+            # Check if position has food
+            if food_positions and position in food_positions:
+                continue
+
             # Check if position already has a trap
             if position not in self.positions:
                 return position
 
         return None
 
-    def spawn_multiple(self, num_traps: int, snake_segments: Optional[List[List[int]]] = None) -> None:
+    def spawn_multiple(self, 
+                  num_traps: int, 
+                  snake_segments: Optional[List[List[int]]] = None,
+                  food_positions: Optional[List[Tuple[int, int]]] = None) -> None:
         """Spawn multiple traps"""
         self.positions = []
         for _ in range(num_traps):
-            new_trap = self.spawn(snake_segments)
+            new_trap = self.spawn(snake_segments, food_positions)
             if new_trap:
                 self.positions.append(new_trap)
 
@@ -351,20 +361,26 @@ class Trap(GameObject):
         head = snake.get_head_position()
         for i, pos in enumerate(self.positions):
             if head == [pos[0], pos[1]]:
-                # Apply penalty
-                snake.score = max(0, snake.score - self.config.trap_penalty)
-
-                # Reduce length if possible
-                if len(snake.segments) > self.config.min_snake_length:
-                    snake.segments.pop()
-                    snake.length -= 1
-
+                # Apply more severe penalty to score
+                snake.score = max(0, snake.score - (self.config.trap_penalty))  # Double penalty
+                
+                # Reduce length more aggressively (remove 2 segments if possible)
+                segments_to_remove = min(5, len(snake.segments) - self.config.min_snake_length)
+                for _ in range(segments_to_remove):
+                    if len(snake.segments) > self.config.min_snake_length:
+                        if snake.grow > 0:
+                            snake.grow -= 1  # First reduce any pending growth
+                        else:
+                            snake.segments.pop()
+                        snake.length -= 1
+                
                 # Activate shield
                 snake.shield_timer = self.config.shield_duration
-
+                
                 # Remove the trap that was hit
                 self.positions.pop(i)
-            return True
+                
+                return True
         return False
 
     def draw(self, surface: pygame.Surface) -> None:

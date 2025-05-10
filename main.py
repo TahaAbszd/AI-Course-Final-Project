@@ -57,37 +57,45 @@ class SnakeGame:
     def reset_round(self, swap_positions: bool = False) -> None:
         """Initialize or reset the current round"""
         spawn1, spawn2, layout = generate_spawn_positions()
-
+        
         if swap_positions:
             spawn1, spawn2 = spawn2, spawn1
-
+            
         self.snake1 = Snake(GREEN, DARK_GREEN, *spawn1, self.bot1.name)
         self.snake2 = Snake(YELLOW, DARK_YELLOW, *spawn2, self.bot2.name)
-
+        
         # Initialize food with positions from layout
         self.food = Food(0)
         self.food.positions = layout.copy()  
-
-        # Initialize traps
+        
+        # Initialize traps with food positions to avoid
         self.traps = Trap(self.config.trap_count)
-        self.traps.spawn_multiple(self.config.trap_count)
-
+        self.traps.spawn_multiple(
+            self.config.trap_count,
+            self.snake1.segments + self.snake2.segments,
+            self.food.positions
+        )
+        
         self.round_start_time = pygame.time.get_ticks() / 1000.0
     
     def handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                self.quit_game()
                 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and self.game_state in [
-                    GameState.START, GameState.GAME_OVER, GameState.DRAW
-                ]:
-                    self.start_new_tournament()
-                    
-                elif event.key == pygame.K_SPACE and self.game_state == GameState.ROUND_OVER:
-                    self.start_next_round()
+                if event.key == pygame.K_SPACE:
+                    if self.game_state == GameState.GAME_OVER:
+                        self.quit_game()
+                    elif self.game_state == GameState.ROUND_OVER:
+                        self.start_next_round()
+                    elif self.game_state in [GameState.START, GameState.DRAW]:
+                        self.start_new_tournament()
+
+    def quit_game(self) -> None:
+        """Clean up and exit the game"""
+        pygame.quit()
+        sys.exit()
     
     def check_collisions(self) -> None:
         """Check all game collisions"""
@@ -120,6 +128,18 @@ class SnakeGame:
     
     def start_next_round(self) -> None:
         """Prepare for the next round in the tournament"""
+        # Check if this is a tiebreaker round
+        is_tiebreaker = (self.tournament.current_round > self.tournament.config.max_rounds and
+                        self.tournament.snake1_wins != self.tournament.snake2_wins and
+                        sum(r["snake1_score"] for r in self.tournament.results) == 
+                        sum(r["snake2_score"] for r in self.tournament.results))
+        
+        if is_tiebreaker:
+            print("\n=== TIEBREAKER ROUND ===")
+            print(f"Current wins: {self.snake1.agent_id} {self.tournament.snake1_wins} - {self.tournament.snake2_wins} {self.snake2.agent_id}")
+            print("Playing one additional round to determine winner!")
+        
+        # Reset the round (swap positions if not first round)
         swap = self.tournament.current_round > 1
         self.reset_round(swap_positions=swap)
         self.game_state = GameState.PLAYING
@@ -163,8 +183,10 @@ class SnakeGame:
         # Determine winner
         if self.snake1.score > self.snake2.score:
             self.round_winner = self.snake1.agent_id
+            self.tournament.snake1_wins += 1
         elif self.snake2.score > self.snake1.score:
             self.round_winner = self.snake2.agent_id
+            self.tournament.snake2_wins += 1
         else:
             self.round_winner = None
         
@@ -175,13 +197,21 @@ class SnakeGame:
             self.snake2.score
         )
         
-        # Check tournament status
+        # Check if we need a tiebreaker
+        if (self.tournament.current_round > self.tournament.config.max_rounds and
+            self.tournament.snake1_wins != self.tournament.snake2_wins and
+            sum(r["snake1_score"] for r in self.tournament.results) == 
+            sum(r["snake2_score"] for r in self.tournament.results)):
+            # Special case: need one more tiebreaker round
+            self.game_state = GameState.ROUND_OVER
+            return
+        
+        # Normal tournament end check
         if self.tournament.is_tournament_over():
-            winner = self.tournament.get_winner()
-            if winner:
-                self.game_state = GameState.GAME_OVER
-            else:
-                self.game_state = GameState.DRAW
+            self.final_winner = self.tournament.get_winner()
+            self.tournament.save_to_csv()
+            self.show_final_results()
+            self.game_state = GameState.GAME_OVER
         else:
             self.game_state = GameState.ROUND_OVER
     
@@ -255,25 +285,25 @@ class SnakeGame:
     def draw_round_over(self) -> None:
         """Draw the round over screen"""
         title = self.large_font.render(f"Round {self.tournament.current_round - 1} Over", True, WHITE)
-        
+
         if self.round_winner:
             result = self.medium_font.render(f"{self.round_winner} wins!", 
                                            True, GREEN if self.round_winner == self.snake1.agent_id else YELLOW)
         else:
             result = self.medium_font.render("Draw!", True, WHITE)
-            
+
         score_text = self.font.render(
             f"{self.snake1.agent_id}: {self.snake1.score}  |  {self.snake2.agent_id}: {self.snake2.score}", 
             True, WHITE
         )
         instruction = self.font.render("Press SPACE to continue", True, WHITE)
-        
+
         # Tournament progress - use tournament's win counts
         progress = self.font.render(
             f"Tournament: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
             True, WHITE
         )
-        
+
         # Position and draw elements
         self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
         self.screen.blit(result, (WIDTH // 2 - result.get_width() // 2, HEIGHT // 2 - 50))
@@ -284,19 +314,32 @@ class SnakeGame:
     def draw_tournament_end(self) -> None:
         """Draw the tournament end screen"""
         title = self.large_font.render("Tournament Over", True, RED)
-        winner_text = self.medium_font.render(f"{self.final_winner} Wins!", 
-                                            True, GREEN if self.final_winner == self.snake1.agent_id else YELLOW)
+        
+        if self.final_winner:
+            winner_text = self.medium_font.render(
+                f"Winner: {self.final_winner}", 
+                True, GREEN if self.final_winner == self.snake1.agent_id else YELLOW
+            )
+        else:
+            winner_text = self.medium_font.render("Tournament Draw!", True, WHITE)
+        
+        rounds_text = self.font.render(
+            f"Rounds Played: {len(self.tournament.results)}", 
+            True, WHITE
+        )
         score_text = self.font.render(
             f"Final Score: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
             True, WHITE
         )
-        instruction = self.font.render("Press SPACE to play again", True, WHITE)
+        instruction = self.font.render("Press SPACE to exit", True, WHITE)
         
-        self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 4))
-        self.screen.blit(winner_text, (WIDTH // 2 - winner_text.get_width() // 2, HEIGHT // 2 - 30))
-        self.screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 + 10))
-        self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 60))
-
+        # Position and draw elements
+        self.screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
+        self.screen.blit(winner_text, (WIDTH//2 - winner_text.get_width()//2, HEIGHT//2 - 50))
+        self.screen.blit(rounds_text, (WIDTH//2 - rounds_text.get_width()//2, HEIGHT//2))
+        self.screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2 + 40))
+        self.screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2 + 100))
+    
     def draw_draw_screen(self) -> None:
         """Draw the tournament draw screen"""
         title = self.large_font.render("Tournament Draw!", True, YELLOW)
@@ -311,6 +354,27 @@ class SnakeGame:
         self.screen.blit(instruction, (WIDTH // 2 - instruction.get_width() // 2, HEIGHT // 2 + 50))
 
     
+    def show_final_results(self) -> None:
+        """Display and print final tournament results"""
+        snake1_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake1.agent_id)
+        snake2_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake2.agent_id)
+        total_s1 = sum(r["snake1_score"] for r in self.tournament.results)
+        total_s2 = sum(r["snake2_score"] for r in self.tournament.results)
+        
+        had_tiebreaker = len(self.tournament.results) > self.tournament.config.max_rounds
+        
+        print("\n=== FINAL TOURNAMENT RESULTS ===")
+        print(f"Total Rounds: {len(self.tournament.results)}")
+        if had_tiebreaker:
+            print("(Including tiebreaker round)")
+        print(f"{self.snake1.agent_id}: {snake1_wins} wins, Total Score: {total_s1}")
+        print(f"{self.snake2.agent_id}: {snake2_wins} wins, Total Score: {total_s2}")
+        
+        if self.final_winner:
+            print(f"\nTOURNAMENT WINNER: {self.final_winner}!")
+        else:
+            print("\nTOURNAMENT ENDED IN A DRAW!")
+        
     def run(self) -> None:
         """Main game loop"""
         while True:

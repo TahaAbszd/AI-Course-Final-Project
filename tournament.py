@@ -43,21 +43,41 @@ class Tournament:
     
     def get_winner(self) -> Optional[str]:
         """Determine the tournament winner"""
+        total_s1 = sum(r["snake1_score"] for r in self.results)
+        total_s2 = sum(r["snake2_score"] for r in self.results)
+        
+        # First check round wins
         if self.snake1_wins > self.snake2_wins:
             return "snake1"
         elif self.snake2_wins > self.snake1_wins:
             return "snake2"
+        
+        # If round wins are equal, check total score
+        if total_s1 > total_s2:
+            return "snake1"
+        elif total_s2 > total_s1:
+            return "snake2"
+        
+        # If still equal, no winner
         return None
     
     def is_tournament_over(self) -> bool:
         """Check if tournament is complete"""
-        max_rounds = self.config.max_rounds
-        if self.current_round > max_rounds:
+        # Tournament ends when max rounds reached
+        if self.current_round > self.config.max_rounds:
+            # Check if we need a tiebreaker
+            if self.snake1_wins != self.snake2_wins:
+                return True
+            # If scores are equal but wins aren't, we need tiebreaker
+            total_s1 = sum(r["snake1_score"] for r in self.results)
+            total_s2 = sum(r["snake2_score"] for r in self.results)
+            if total_s1 == total_s2 and self.snake1_wins != self.snake2_wins:
+                return False
             return True
         
-        # Check if one snake has unassailable lead
-        remaining_rounds = max_rounds - self.current_round + 1
-        if abs(self.snake1_wins - self.snake2_wins) > remaining_rounds:
+        # Or when one snake has unassailable lead
+        rounds_remaining = self.config.max_rounds - self.current_round + 1
+        if abs(self.snake1_wins - self.snake2_wins) > rounds_remaining:
             return True
             
         return False
