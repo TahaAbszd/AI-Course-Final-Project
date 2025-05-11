@@ -10,6 +10,8 @@ class Tournament:
         self.current_round = 1
         self.snake1_wins = 0
         self.snake2_wins = 0
+        self.snake1_name: str = None
+        self.snake2_name: str = None
     
     def record_round(self, winner: Optional[str], 
                    snake1_score: int, 
@@ -24,9 +26,9 @@ class Tournament:
         }
         self.results.append(result)
         
-        if winner == "snake1":
+        if winner == self.snake1_name:
             self.snake1_wins += 1
-        elif winner == "snake2":
+        elif winner == self.snake2_name:
             self.snake2_wins += 1
             
         self.current_round += 1
@@ -48,15 +50,15 @@ class Tournament:
         
         # First check round wins
         if self.snake1_wins > self.snake2_wins:
-            return "snake1"
+            return self.snake1_name
         elif self.snake2_wins > self.snake1_wins:
-            return "snake2"
+            return self.snake2_name
         
         # If round wins are equal, check total score
         if total_s1 > total_s2:
-            return "snake1"
+            return self.snake1_name
         elif total_s2 > total_s1:
-            return "snake2"
+            return self.snake2_name
         
         # If still equal, no winner
         return None
