@@ -41,15 +41,17 @@ class GameConfig:
     round_time: int = 55                # Time of Game
     trap_count: int = 15                # Number of traps in game
     trap_penalty: int = 2               # Points lost per trap hit
-    trap_segment_penalty: int = 3       # Segments lost per trap hit
+    trap_segment_penalty: int = 4       # Segments lost per trap hit
     head_collision_penalty: int = 4     # Points lost in head collisions 
-    bodey_collision_penalty: int = 3    # Points lost in body collisions
+    body_collision_penalty: int = 3     # Points lost in body collisions
     shield_duration: float = 2.0        # Shield Duration after each collisions
     collision_segment_penalty: int = 2  # Segments lost in any collision
     initial_food: int = 35              # Number of foods in game
     growth_per_food: int = 2            # Length growth of snakes per eating food
-    min_snake_length: int = 5           # Minimum segments snake can have
+    min_snake_length: int = 1           # Minimum segments snake can have
     advantage_time: int = 5             # Seconds of advantage time after opponent dies
+    early_victory_diff: int = 30  # Points difference for early victory
+    min_rounds_for_early_victory: int = 2  # Need at least 2 rounds for early victory
     
 
 class Direction:

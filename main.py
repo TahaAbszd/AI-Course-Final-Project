@@ -70,8 +70,8 @@ class SnakeGame:
         if swap_positions:
             spawn1, spawn2 = spawn2, spawn1
         
-        self.snake1_advantage_time = 2.0  # 2 seconds advantage
-        self.snake2_advantage_time = 2.0
+        self.snake1_advantage_time = 3.0  
+        self.snake2_advantage_time = 3.0
         self.snake1_advantage_start = pygame.time.get_ticks() / 1000.0
         self.snake2_advantage_start = pygame.time.get_ticks() / 1000.0
         
@@ -167,28 +167,46 @@ class SnakeGame:
         if self.game_state != GameState.PLAYING:
             return
             
-        dt = self.clock.get_time() / 1000.0
+        current_time = pygame.time.get_ticks() / 1000.0  
+        elapsed_game_time = current_time - self.round_start_time
+        time_left = self.config.round_time - elapsed_game_time
         
-        # Update snakes using bot decisions
+        # Check if both snakes are dead
+        if not self.snake1.alive and not self.snake2.alive:
+            self.end_round(None)
+            return
+
+        # Update snakes and check for collisions
         if self.snake1.alive:
             move = self.bot1.decide_move(self.snake1, self.food, self.snake2)
             self.snake1.change_direction(move)
             self.snake1.update(self.clock.get_time() / 1000.0)
-
-            # Handle self-collision with advantage time
-            if self.snake1.check_self_collision():
-                if dt - self.snake1_advantage_start > self.snake1_advantage_time:
-                    self.snake1.alive = False
             
+            # Check if snake1 died from self collision or wall collision
+            if not self.snake1.alive and self.snake1.self_collision:
+                # Start advantage timer for snake2
+                self.snake2_advantage_start = current_time
+                self.snake2_advantage_time = min(8.0, time_left)  # Cap at remaining time or 8 seconds
+        
         if self.snake2.alive:
             move = self.bot2.decide_move(self.snake2, self.food, self.snake1)
             self.snake2.change_direction(move)
             self.snake2.update(self.clock.get_time() / 1000.0)
-
-            # Handle self-collision with advantage time
-            if self.snake2.check_self_collision():
-                if dt - self.snake2_advantage_start > self.snake2_advantage_time:
-                    self.snake2.alive = False
+            
+            # Check if snake2 died from self collision or wall collision
+            if not self.snake2.alive and self.snake2.self_collision:
+                # Start advantage timer for snake1
+                self.snake1_advantage_start = current_time
+                self.snake1_advantage_time = min(8.0, time_left)  # Cap at remaining time or 8 seconds
+        
+        # Check if advantage time has expired for either snake
+        if not self.snake1.alive and self.snake2.alive:
+            if current_time - self.snake2_advantage_start >= self.snake2_advantage_time:
+                self.snake2.alive = False
+        
+        if not self.snake2.alive and self.snake1.alive:
+            if current_time - self.snake1_advantage_start >= self.snake1_advantage_time:
+                self.snake1.alive = False
         
         # Check collisions, traps, etc.
         self.check_collisions()
@@ -196,6 +214,7 @@ class SnakeGame:
         # Check round end conditions
         if self.check_round_end():
             self.handle_round_end()
+            
     
     def check_round_end(self) -> bool:
         """Check if round should end"""
@@ -208,6 +227,10 @@ class SnakeGame:
     
     def handle_round_end(self) -> None:
         """Process round end and tournament progression"""
+        # Record apples eaten in this round
+        self.tournament.total_snake1_apples += self.snake1.score
+        self.tournament.total_snake2_apples += self.snake2.score
+        
         # Determine winner based on being alive AND score
         snake1_alive = self.snake1.alive
         snake2_alive = self.snake2.alive
@@ -237,7 +260,7 @@ class SnakeGame:
             self.snake2.score
         )
 
-        # Check tournament completion
+        # Check tournament completion with new criteria
         if self.tournament.is_tournament_over():
             self.final_winner = self.tournament.get_winner()
             self.tournament.save_to_csv()
@@ -281,11 +304,26 @@ class SnakeGame:
         self.snake2.draw(self.screen)
         
         # Draw HUD
-        elapsed = pygame.time.get_ticks() / 1000.0 - self.round_start_time
-        time_left = max(0, self.config.round_time - elapsed)
-        self.draw_scores(time_left)
+        current_time = pygame.time.get_ticks() / 1000.0
+        elapsed_game_time = current_time - self.round_start_time
+        time_left = max(0, self.config.round_time - elapsed_game_time)
+        
+        # Calculate advantage time remaining
+        snake1_advantage_remaining = 0
+        snake2_advantage_remaining = 0
+        
+        if not self.snake1.alive and self.snake2.alive:
+            snake2_advantage_remaining = max(0, self.snake2_advantage_time - (current_time - self.snake2_advantage_start))
+            time_text = f"Snake2 Advantage: {snake2_advantage_remaining:.1f}s"
+        elif not self.snake2.alive and self.snake1.alive:
+            snake1_advantage_remaining = max(0, self.snake1_advantage_time - (current_time - self.snake1_advantage_start))
+            time_text = f"Snake1 Advantage: {snake1_advantage_remaining:.1f}s"
+        else:
+            time_text = f"Time: {int(time_left)}s"
+        
+        self.draw_scores(time_text)
     
-    def draw_scores(self, time_left: float) -> None:
+    def draw_scores(self, time_text: str) -> None:
         """Draw score and tournament information"""
         score1_text = f"{self.snake1.agent_id}: {self.snake1.score}"
         score2_text = f"{self.snake2.agent_id}: {self.snake2.score}"
@@ -294,8 +332,6 @@ class SnakeGame:
             round_text = "Tiebreaker"
         else:
             round_text = f"Round {self.displayed_round}/{self.config.max_rounds}"
-            
-        time_text = f"Time: {int(time_left)}s"
         
         # Render text surfaces
         score1_surface = self.font.render(score1_text, True, GREEN)
@@ -394,20 +430,23 @@ class SnakeGame:
 
     
     def show_final_results(self) -> None:
-        """Display and print final tournament results"""
+        """Display final results with new information"""
         snake1_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake1.agent_id)
         snake2_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake2.agent_id)
-        total_s1 = sum(r["snake1_score"] for r in self.tournament.results)
-        total_s2 = sum(r["snake2_score"] for r in self.tournament.results)
-        
-        had_tiebreaker = len(self.tournament.results) > self.tournament.config.max_rounds
+        total_s1 = self.tournament.total_snake1_apples
+        total_s2 = self.tournament.total_snake2_apples
         
         print("\n=== FINAL TOURNAMENT RESULTS ===")
         print(f"Total Rounds: {len(self.tournament.results)}")
-        if had_tiebreaker:
-            print("(Including tiebreaker round)")
-        print(f"{self.snake1.agent_id}: {snake1_wins} wins, Total Score: {total_s1}")
-        print(f"{self.snake2.agent_id}: {snake2_wins} wins, Total Score: {total_s2}")
+        print(f"Draw Rounds: {self.tournament.draw_rounds}")
+        print(f"Crashed Rounds: {self.tournament.crashed_rounds}")
+        print(f"{self.snake1.agent_id}: {snake1_wins} wins, Total Apples: {total_s1}")
+        print(f"{self.snake2.agent_id}: {snake2_wins} wins, Total Apples: {total_s2}")
+        
+        # Check for early victory
+        diff = abs(total_s1 - total_s2)
+        if diff >= self.config.early_victory_diff and len(self.tournament.results) >= self.config.min_rounds_for_early_victory:
+            print(f"\nEarly victory with {diff} point difference!")
         
         if self.final_winner:
             print(f"\nTOURNAMENT WINNER: {self.final_winner}!")
