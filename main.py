@@ -17,6 +17,7 @@ class SnakeGame:
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Snake Tournament")
         self.clock = pygame.time.Clock()
+        self.displayed_round = 1
         
         # Fonts
         self.font = pygame.font.SysFont('Arial', 24)
@@ -36,6 +37,8 @@ class SnakeGame:
         # Tournament tracking
         self.tournament.snake1_wins = 0
         self.tournament.snake2_wins = 0
+        self.tournament.snake1_name = None
+        self.tournament.snake2_name = None
         self.losers_bracket = []
         self.rematches = []
         
@@ -51,6 +54,12 @@ class SnakeGame:
         self.bot2 = GreedyBot()     # Default AI
         # self.user_bot = UserBot()   # For human player
         
+        # for self collision handlig
+        self.snake1_advantage_time = 0
+        self.snake2_advantage_time = 0
+        self.snake1_advantage_start = 0
+        self.snake2_advantage_start = 0
+    
         # Initialize game
         self.reset_round()
     
@@ -68,6 +77,9 @@ class SnakeGame:
         self.food = Food(0)
         self.food.positions = layout.copy()  
         
+        self.tournament.snake1_name = self.snake1.agent_id
+        self.tournament.snake2_name = self.snake2.agent_id
+        
         # Initialize traps with food positions to avoid
         self.traps = Trap(self.config.trap_count)
         self.traps.spawn_multiple(
@@ -75,7 +87,7 @@ class SnakeGame:
             self.snake1.segments + self.snake2.segments,
             self.food.positions
         )
-        
+        self.displayed_round = self.tournament.current_round
         self.round_start_time = pygame.time.get_ticks() / 1000.0
     
     def handle_events(self) -> None:
@@ -136,8 +148,9 @@ class SnakeGame:
         
         if is_tiebreaker:
             print("\n=== TIEBREAKER ROUND ===")
-            print(f"Current wins: {self.snake1.agent_id} {self.tournament.snake1_wins} - {self.tournament.snake2_wins} {self.snake2.agent_id}")
-            print("Playing one additional round to determine winner!")
+            self.displayed_round = "TB"  # Special display for tiebreaker
+        else:
+            self.displayed_round = self.tournament.current_round
         
         # Reset the round (swap positions if not first round)
         swap = self.tournament.current_round > 1
@@ -257,7 +270,12 @@ class SnakeGame:
         """Draw score and tournament information"""
         score1_text = f"{self.snake1.agent_id}: {self.snake1.score}"
         score2_text = f"{self.snake2.agent_id}: {self.snake2.score}"
-        round_text = f"Round {self.current_round}/{self.config.max_rounds}"
+        
+        if isinstance(self.displayed_round, str):  # For tiebreaker
+            round_text = "Tiebreaker"
+        else:
+            round_text = f"Round {self.displayed_round}/{self.config.max_rounds}"
+            
         time_text = f"Time: {int(time_left)}s"
         
         # Render text surfaces
@@ -284,8 +302,10 @@ class SnakeGame:
 
     def draw_round_over(self) -> None:
         """Draw the round over screen"""
-        title = self.large_font.render(f"Round {self.tournament.current_round - 1} Over", True, WHITE)
-
+        round_num = (self.tournament.current_round - 1 if isinstance(self.displayed_round, int) 
+                else self.displayed_round)
+        title = self.large_font.render(f"Round {round_num} Over", True, WHITE)
+    
         if self.round_winner:
             result = self.medium_font.render(f"{self.round_winner} wins!", 
                                            True, GREEN if self.round_winner == self.snake1.agent_id else YELLOW)

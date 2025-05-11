@@ -37,15 +37,19 @@ class GameState(Enum):
 @dataclass
 class GameConfig:
     tournament_mode: bool = True
-    max_rounds: int = 3
-    round_time: int = 120
-    trap_count: int = 10
-    trap_penalty: int = 3
-    head_collision_penalty: int = 3
-    shield_duration: float = 2.0
-    initial_food: int = 30
-    growth_per_food: int = 3
-    min_snake_length: int = 3
+    max_rounds: int = 3                 # Number of round that snakes should be played for winning
+    round_time: int = 55                # Time of Game
+    trap_count: int = 15                # Number of traps in game
+    trap_penalty: int = 2               # Points lost per trap hit
+    trap_segment_penalty: int = 3       # Segments lost per trap hit
+    head_collision_penalty: int = 4     # Points lost in head collisions 
+    bodey_collision_penalty: int = 3    # Points lost in body collisions
+    shield_duration: float = 2.0        # Shield Duration after each collisions
+    collision_segment_penalty: int = 2  # Segments lost in any collision
+    initial_food: int = 35              # Number of foods in game
+    growth_per_food: int = 2            # Length growth of snakes per eating food
+    min_snake_length: int = 5           # Minimum segments snake can have
+    advantage_time: int = 5             # Seconds of advantage time after opponent dies
     
 
 class Direction:
@@ -146,39 +150,50 @@ class Snake(GameObject):
 
         # Head-to-head collision
         if head == other_head:
-            if self.score > other_snake.score:
-                other_snake.score = max(0, other_snake.score - self.config.head_collision_penalty)
-                other_snake.length = max(self.config.min_snake_length, other_snake.length - 1)
-                other_snake.shield_timer = self.config.shield_duration
-                if other_snake.length < len(other_snake.segments):
-                    other_snake.segments.pop()
-            elif other_snake.score > self.score:
-                self.score = max(0, self.score - self.config.head_collision_penalty)
-                self.length = max(self.config.min_snake_length, self.length - 1)
-                self.shield_timer = self.config.shield_duration
-                if self.length < len(self.segments):
-                    self.segments.pop()
-            else:  # Equal scores - both get penalties
-                self.score = max(0, self.score - self.config.head_collision_penalty)
-                other_snake.score = max(0, other_snake.score - self.config.head_collision_penalty)
-                self.length = max(self.config.min_snake_length, self.length - 1)
-                other_snake.length = max(self.config.min_snake_length, other_snake.length - 1)
-                self.shield_timer = self.config.shield_duration
-                other_snake.shield_timer = self.config.shield_duration
-                if self.length < len(self.segments):
-                    self.segments.pop()
-                if other_snake.length < len(other_snake.segments):
-                    other_snake.segments.pop()
-            return True
+            penalty = self.config.head_collision_penalty
+            for _ in range(self.config.collision_segment_penalty):
+                if self.score > other_snake.score:
+                    other_snake.score = max(0, other_snake.score - penalty)
+                    if len(other_snake.segments) > self.config.min_snake_length:
+                        other_snake.segments.pop()
+                        other_snake.length -= 1
+                        
+                    other_snake.shield_timer = self.config.shield_duration
+                    
+                elif other_snake.score > self.score:
+                    self.score = max(0, self.score - penalty)
+                    if len(self.segments) > self.config.min_snake_length:
+                        self.segments.pop()
+                        self.length -= 1
+                    self.shield_timer = self.config.shield_duration
+                    
+                else:  # Equal scores - both get penalties
+                    self.score = max(0, self.score - penalty)
+                    other_snake.score = max(0, other_snake.score - penalty)
+                    if len(self.segments) > self.config.min_snake_length:
+                        self.segments.pop()
+                        self.length -= 1
+                        
+                    if len(other_snake.segments) > self.config.min_snake_length:
+                        other_snake.segments.pop()
+                        other_snake.length -= 1
+
+                    self.shield_timer = self.config.shield_duration
+                    other_snake.shield_timer = self.config.shield_duration
+                        
+                return True
 
         # Body collision
         for segment in list(other_snake.segments)[1:]:
             if head == segment:
-                self.score = max(0, self.score - self.config.head_collision_penalty)
-                self.length = max(self.config.min_snake_length, self.length - 1)
-                self.shield_timer = self.config.shield_duration
-                if self.length < len(self.segments):
-                    self.segments.pop()
+                for _ in range(self.config.collision_segment_penalty):  
+                    self.score = max(0, self.score - self.config.body_collision_penalty)
+                    if len(self.segments) > self.config.min_snake_length:
+                        self.segments.pop()
+                        self.length -= 1
+                        
+                    self.shield_timer = self.config.shield_duration
+
                 return True
         return False
     
@@ -365,8 +380,7 @@ class Trap(GameObject):
                 snake.score = max(0, snake.score - (self.config.trap_penalty))  # Double penalty
                 
                 # Reduce length more aggressively (remove 2 segments if possible)
-                segments_to_remove = min(5, len(snake.segments) - self.config.min_snake_length)
-                for _ in range(segments_to_remove):
+                for _ in range(self.config.trap_segment_penalty):
                     if len(snake.segments) > self.config.min_snake_length:
                         if snake.grow > 0:
                             snake.grow -= 1  # First reduce any pending growth
