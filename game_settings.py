@@ -89,9 +89,14 @@ class Snake(GameObject):
         self.move_timer = 0
         self.shield_timer = 0
         self.shield_flash = 0
+        self.self_collision = False
 
     def get_head_position(self) -> List[int]:
         return self.segments[0][:]
+
+    def check_self_collision(self) -> bool:
+        """Returns True if the snake collides with itself"""
+        return self.segments.count(self.get_head_position()) > 1
 
     def get_body_positions(self) -> List[List[int]]:
         return [segment[:] for segment in self.segments[1:]]
@@ -137,8 +142,8 @@ class Snake(GameObject):
             for segment in list(self.segments)[1:]:
                 if new_head == segment:
                     self.alive = False
+                    self.self_collision = True
                     return False
-
         return True
     
     def check_collision_with_other(self, other_snake: 'Snake') -> bool:

@@ -69,7 +69,12 @@ class SnakeGame:
         
         if swap_positions:
             spawn1, spawn2 = spawn2, spawn1
-            
+        
+        self.snake1_advantage_time = 2.0  # 2 seconds advantage
+        self.snake2_advantage_time = 2.0
+        self.snake1_advantage_start = pygame.time.get_ticks() / 1000.0
+        self.snake2_advantage_start = pygame.time.get_ticks() / 1000.0
+        
         self.snake1 = Snake(GREEN, DARK_GREEN, *spawn1, self.bot1.name)
         self.snake2 = Snake(YELLOW, DARK_YELLOW, *spawn2, self.bot2.name)
         
@@ -168,12 +173,22 @@ class SnakeGame:
         if self.snake1.alive:
             move = self.bot1.decide_move(self.snake1, self.food, self.snake2)
             self.snake1.change_direction(move)
-            self.snake1.update(dt)
+            self.snake1.update(self.clock.get_time() / 1000.0)
+
+            # Handle self-collision with advantage time
+            if self.snake1.check_self_collision():
+                if dt - self.snake1_advantage_start > self.snake1_advantage_time:
+                    self.snake1.alive = False
             
         if self.snake2.alive:
             move = self.bot2.decide_move(self.snake2, self.food, self.snake1)
             self.snake2.change_direction(move)
-            self.snake2.update(dt)
+            self.snake2.update(self.clock.get_time() / 1000.0)
+
+            # Handle self-collision with advantage time
+            if self.snake2.check_self_collision():
+                if dt - self.snake2_advantage_start > self.snake2_advantage_time:
+                    self.snake2.alive = False
         
         # Check collisions, traps, etc.
         self.check_collisions()
