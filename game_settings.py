@@ -38,7 +38,7 @@ class GameState(Enum):
 class GameConfig:
     tournament_mode: bool = True
     max_rounds: int = 3                 # Number of round that snakes should be played for winning
-    round_time: int = 55                # Time of Game
+    round_time: int = 35                # Time of Game
     trap_count: int = 15                # Number of traps in game
     trap_penalty: int = 2               # Points lost per trap hit
     trap_segment_penalty: int = 4       # Segments lost per trap hit
@@ -50,7 +50,7 @@ class GameConfig:
     growth_per_food: int = 2            # Length growth of snakes per eating food
     min_snake_length: int = 1           # Minimum segments snake can have
     advantage_time: int = 5             # Seconds of advantage time after opponent dies
-    early_victory_diff: int = 30  # Points difference for early victory
+    early_victory_diff: int = 30        # Points difference for early victory
     min_rounds_for_early_victory: int = 2  # Need at least 2 rounds for early victory
     
 
@@ -75,9 +75,9 @@ class Snake(GameObject):
                  agent_id: str = "player"):
         self.color_primary = color_primary
         self.color_secondary = color_secondary
+        self.config = GameConfig()
         self.agent_id = agent_id
         self.reset(start_x, start_y)
-        self.config = GameConfig()
         
     def reset(self, start_x: int, start_y: int) -> None:
         self.segments: Deque[List[int]] = deque([[start_x, start_y]])
@@ -92,6 +92,9 @@ class Snake(GameObject):
         self.shield_timer = 0
         self.shield_flash = 0
         self.self_collision = False
+        self.traps_hit = 0
+        self.collisions = 0
+        self.collision_types = []
 
     def get_head_position(self) -> List[int]:
         return self.segments[0][:]
@@ -157,6 +160,10 @@ class Snake(GameObject):
 
         # Head-to-head collision
         if head == other_head:
+            self.collisions += 1
+            other_snake.collisions += 1
+            self.collision_types.append("head-to-head")
+            other_snake.collision_types.append("head-to-head")
             penalty = self.config.head_collision_penalty
             for _ in range(self.config.collision_segment_penalty):
                 if self.score > other_snake.score:
@@ -193,6 +200,8 @@ class Snake(GameObject):
         # Body collision
         for segment in list(other_snake.segments)[1:]:
             if head == segment:
+                self.collisions += 1
+                self.collision_types.append("body") 
                 for _ in range(self.config.collision_segment_penalty):  
                     self.score = max(0, self.score - self.config.body_collision_penalty)
                     if len(self.segments) > self.config.min_snake_length:
@@ -383,6 +392,7 @@ class Trap(GameObject):
         head = snake.get_head_position()
         for i, pos in enumerate(self.positions):
             if head == [pos[0], pos[1]]:
+                snake.traps_hit += 1
                 # Apply more severe penalty to score
                 snake.score = max(0, snake.score - (self.config.trap_penalty))  # Double penalty
                 

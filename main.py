@@ -139,6 +139,8 @@ class SnakeGame:
     def start_new_tournament(self) -> None:
         """Reset everything for a new tournament"""
         self.tournament = Tournament(self.config)
+        self.tournament.snake1_wins = 0  # Explicitly reset
+        self.tournament.snake2_wins = 0  # Explicitly reset
         self.game_state = GameState.PLAYING
         self.current_round = 1
         self.reset_round()
@@ -227,27 +229,22 @@ class SnakeGame:
     
     def handle_round_end(self) -> None:
         """Process round end and tournament progression"""
-        # Record apples eaten in this round
-        self.tournament.total_snake1_apples += self.snake1.score
-        self.tournament.total_snake2_apples += self.snake2.score
+        current_time = pygame.time.get_ticks() / 1000.0
+        time_remaining = max(0, self.config.round_time - (current_time - self.round_start_time))
         
-        # Determine winner based on being alive AND score
+        # Determine winner
         snake1_alive = self.snake1.alive
         snake2_alive = self.snake2.alive
 
         if snake1_alive and not snake2_alive:
             self.round_winner = self.snake1.agent_id
-            self.tournament.snake1_wins += 1
         elif snake2_alive and not snake1_alive:
             self.round_winner = self.snake2.agent_id
-            self.tournament.snake2_wins += 1
         elif snake1_alive and snake2_alive:
             if self.snake1.score > self.snake2.score:
                 self.round_winner = self.snake1.agent_id
-                self.tournament.snake1_wins += 1
             elif self.snake2.score > self.snake1.score:
                 self.round_winner = self.snake2.agent_id
-                self.tournament.snake2_wins += 1
             else:
                 self.round_winner = None  # Draw
         else:
@@ -255,18 +252,26 @@ class SnakeGame:
 
         # Record results
         self.tournament.record_round(
-            self.round_winner,
-            self.snake1.score,
-            self.snake2.score
+            winner=self.round_winner,
+            snake1_score=self.snake1.score,
+            snake2_score=self.snake2.score,
+            snake1_traps_hit=self.snake1.traps_hit,
+            snake2_traps_hit=self.snake2.traps_hit,
+            snake1_collisions=self.snake1.collisions,
+            snake2_collisions=self.snake2.collisions,
+            snake1_collision_types=self.snake1.collision_types,
+            snake2_collision_types=self.snake2.collision_types,
+            time_remaining=time_remaining
         )
 
-        # Check tournament completion with new criteria
+        # Check tournament completion
         if self.tournament.is_tournament_over():
             self.final_winner = self.tournament.get_winner()
             self.tournament.save_to_csv()
             self.show_final_results()
             self.game_state = GameState.GAME_OVER
         else:
+            # Only increment round counter if we're continuing
             self.game_state = GameState.ROUND_OVER
 
     
@@ -430,14 +435,18 @@ class SnakeGame:
 
     
     def show_final_results(self) -> None:
-        """Display final results with new information"""
-        snake1_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake1.agent_id)
-        snake2_wins = sum(1 for r in self.tournament.results if r["winner"] == self.snake2.agent_id)
+        """Display and print final tournament results"""
+        snake1_wins = self.tournament.snake1_wins
+        snake2_wins = self.tournament.snake2_wins
         total_s1 = self.tournament.total_snake1_apples
         total_s2 = self.tournament.total_snake2_apples
         
+        had_tiebreaker = len(self.tournament.results) > self.tournament.config.max_rounds
+        
         print("\n=== FINAL TOURNAMENT RESULTS ===")
         print(f"Total Rounds: {len(self.tournament.results)}")
+        if had_tiebreaker:
+            print("(Including tiebreaker rounds)")
         print(f"Draw Rounds: {self.tournament.draw_rounds}")
         print(f"Crashed Rounds: {self.tournament.crashed_rounds}")
         print(f"{self.snake1.agent_id}: {snake1_wins} wins, Total Apples: {total_s1}")
