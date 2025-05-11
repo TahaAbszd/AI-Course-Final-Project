@@ -208,33 +208,36 @@ class SnakeGame:
     
     def handle_round_end(self) -> None:
         """Process round end and tournament progression"""
-        # Determine winner
-        if self.snake1.score > self.snake2.score:
+        # Determine winner based on being alive AND score
+        snake1_alive = self.snake1.alive
+        snake2_alive = self.snake2.alive
+
+        if snake1_alive and not snake2_alive:
             self.round_winner = self.snake1.agent_id
             self.tournament.snake1_wins += 1
-        elif self.snake2.score > self.snake1.score:
+        elif snake2_alive and not snake1_alive:
             self.round_winner = self.snake2.agent_id
             self.tournament.snake2_wins += 1
+        elif snake1_alive and snake2_alive:
+            if self.snake1.score > self.snake2.score:
+                self.round_winner = self.snake1.agent_id
+                self.tournament.snake1_wins += 1
+            elif self.snake2.score > self.snake1.score:
+                self.round_winner = self.snake2.agent_id
+                self.tournament.snake2_wins += 1
+            else:
+                self.round_winner = None  # Draw
         else:
-            self.round_winner = None
-        
+            self.round_winner = None  # Both dead, no winner
+
         # Record results
         self.tournament.record_round(
             self.round_winner,
             self.snake1.score,
             self.snake2.score
         )
-        
-        # Check if we need a tiebreaker
-        if (self.tournament.current_round > self.tournament.config.max_rounds and
-            self.tournament.snake1_wins != self.tournament.snake2_wins and
-            sum(r["snake1_score"] for r in self.tournament.results) == 
-            sum(r["snake2_score"] for r in self.tournament.results)):
-            # Special case: need one more tiebreaker round
-            self.game_state = GameState.ROUND_OVER
-            return
-        
-        # Normal tournament end check
+
+        # Check tournament completion
         if self.tournament.is_tournament_over():
             self.final_winner = self.tournament.get_winner()
             self.tournament.save_to_csv()
@@ -242,6 +245,7 @@ class SnakeGame:
             self.game_state = GameState.GAME_OVER
         else:
             self.game_state = GameState.ROUND_OVER
+
     
     def draw(self) -> None:
         """Render all game elements"""

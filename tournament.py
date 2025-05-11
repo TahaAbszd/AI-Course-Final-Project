@@ -13,31 +13,46 @@ class Tournament:
         self.snake1_name: str = None
         self.snake2_name: str = None
     
-    def record_round(self, winner: Optional[str], 
-                   snake1_score: int, 
-                   snake2_score: int) -> None:
-        """Record the results of a single round"""
+    def record_round(self, 
+                     winner: Optional[str], 
+                     snake1_score: int, 
+                     snake2_score: int,
+                     snake1_traps_hit: int = 0,
+                     snake2_traps_hit: int = 0,
+                     snake1_collisions: int = 0,
+                     snake2_collisions: int = 0,
+                     snake1_collision_types: List[str] = [],
+                     snake2_collision_types: List[str] = [],
+                     time_remaining: float = 0.0) -> None:
+        """Record the results of a single round including extra logs"""
         result = {
             "round": self.current_round,
             "timestamp": datetime.now().isoformat(),
             "winner": winner,
             "snake1_score": snake1_score,
-            "snake2_score": snake2_score
+            "snake2_score": snake2_score,
+            "snake1_traps_hit": snake1_traps_hit,
+            "snake2_traps_hit": snake2_traps_hit,
+            "snake1_collisions": snake1_collisions,
+            "snake2_collisions": snake2_collisions,
+            "snake1_collision_types": ','.join(snake1_collision_types),
+            "snake2_collision_types": ','.join(snake2_collision_types),
+            "time_remaining": time_remaining
         }
         self.results.append(result)
-        
+
         if winner == self.snake1_name:
             self.snake1_wins += 1
         elif winner == self.snake2_name:
             self.snake2_wins += 1
-            
+
         self.current_round += 1
     
     def save_to_csv(self, filename: str = "tournament_results.csv") -> None:
         """Save tournament results to CSV file"""
         if not self.results:
             return
-            
+
         with open(filename, mode='w', newline='') as file:
             writer = csv.DictWriter(file, fieldnames=self.results[0].keys())
             writer.writeheader()
@@ -47,20 +62,17 @@ class Tournament:
         """Determine the tournament winner"""
         total_s1 = sum(r["snake1_score"] for r in self.results)
         total_s2 = sum(r["snake2_score"] for r in self.results)
-        
-        # First check round wins
+
         if self.snake1_wins > self.snake2_wins:
             return self.snake1_name
         elif self.snake2_wins > self.snake1_wins:
             return self.snake2_name
-        
-        # If round wins are equal, check total score
+
         if total_s1 > total_s2:
             return self.snake1_name
         elif total_s2 > total_s1:
             return self.snake2_name
-        
-        # If still equal, no winner
+
         return None
     
     def is_tournament_over(self) -> bool:
