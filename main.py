@@ -411,13 +411,18 @@ class SnakeGame:
             f"Final Score: {self.tournament.snake1_wins}-{self.tournament.snake2_wins}", 
             True, WHITE
         )
+        ratio_text = self.font.render(
+            f"Win Ratios: {self.tournament.snake1_win_ratio:.2f}-{self.tournament.snake2_win_ratio:.2f}",
+            True, WHITE
+        )
         instruction = self.font.render("Press SPACE to exit", True, WHITE)
         
         # Position and draw elements
         self.screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
-        self.screen.blit(winner_text, (WIDTH//2 - winner_text.get_width()//2, HEIGHT//2 - 50))
-        self.screen.blit(rounds_text, (WIDTH//2 - rounds_text.get_width()//2, HEIGHT//2))
-        self.screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2 + 40))
+        self.screen.blit(winner_text, (WIDTH//2 - winner_text.get_width()//2, HEIGHT//2 - 70))
+        self.screen.blit(rounds_text, (WIDTH//2 - rounds_text.get_width()//2, HEIGHT//2 - 30))
+        self.screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2 + 10))
+        self.screen.blit(ratio_text, (WIDTH//2 - ratio_text.get_width()//2, HEIGHT//2 + 50))
         self.screen.blit(instruction, (WIDTH//2 - instruction.get_width()//2, HEIGHT//2 + 100))
     
     def draw_draw_screen(self) -> None:
@@ -438,6 +443,8 @@ class SnakeGame:
         """Display and print final tournament results"""
         snake1_wins = self.tournament.snake1_wins
         snake2_wins = self.tournament.snake2_wins
+        snake1_losses = self.tournament.snake1_losses
+        snake2_losses = self.tournament.snake2_losses
         total_s1 = self.tournament.total_snake1_apples
         total_s2 = self.tournament.total_snake2_apples
         
@@ -449,8 +456,8 @@ class SnakeGame:
             print("(Including tiebreaker rounds)")
         print(f"Draw Rounds: {self.tournament.draw_rounds}")
         print(f"Crashed Rounds: {self.tournament.crashed_rounds}")
-        print(f"{self.snake1.agent_id}: {snake1_wins} wins, Total Apples: {total_s1}")
-        print(f"{self.snake2.agent_id}: {snake2_wins} wins, Total Apples: {total_s2}")
+        print(f"{self.snake1.agent_id}: {snake1_wins} wins, {snake1_losses} losses, Win Ratio: {self.tournament.snake1_win_ratio:.2f}")
+        print(f"{self.snake2.agent_id}: {snake2_wins} wins, {snake2_losses} losses, Win Ratio: {self.tournament.snake2_win_ratio:.2f}")
         
         # Check for early victory
         diff = abs(total_s1 - total_s2)

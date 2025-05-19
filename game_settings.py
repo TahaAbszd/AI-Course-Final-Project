@@ -347,6 +347,7 @@ class Trap(GameObject):
         self.config = GameConfig()
         self.num_traps = num_traps
         self.positions: List[Tuple[int, int]] = []
+        self.traps_hit = 0
 
     def spawn(self, 
           snake_segments: Optional[List[List[int]]] = None,
@@ -392,6 +393,7 @@ class Trap(GameObject):
         head = snake.get_head_position()
         for i, pos in enumerate(self.positions):
             if head == [pos[0], pos[1]]:
+                self.traps_hit += 1
                 snake.traps_hit += 1
                 # Apply more severe penalty to score
                 snake.score = max(0, snake.score - (self.config.trap_penalty))  # Double penalty
