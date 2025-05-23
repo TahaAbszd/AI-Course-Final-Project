@@ -5,15 +5,12 @@ from typing import List, Dict, Tuple
 import csv
 from datetime import datetime
 from tournament import Tournament
-from game_settings import GameConfig
+from main import SnakeGame
 
 class Contest:
     def __init__(self):
-        self.bots: List[Dict] = []  # Stores all bot classes and metadata
+        self.bots: List[Dict] = [] 
         self.leaderboard: List[Dict] = []
-        self.config = GameConfig()
-        self.config.max_rounds = 3  # Best of 3 matches
-        self.config.round_time = 60  # 60 seconds per match
         self.tournament_results = []
 
     def discover_bots(self) -> List[Dict]:
@@ -54,7 +51,7 @@ class Contest:
                         "authors": f"{name1} & {name2}",
                         "wins": 0,
                         "losses": 0,
-                        "points": 0  # 3 for win, 1 for draw
+                        "points": 0  
                     })
                     
             except Exception as e:
@@ -69,17 +66,18 @@ class Contest:
 
     def run_match(self, bot1: Dict, bot2: Dict) -> Dict:
         """Run a match between two bots and return results"""
-        from snake_game import SnakeGame  # Import here to avoid circular imports
         
         print(f"\n=== MATCH: {bot1['name']} vs {bot2['name']} ===")
         
         game = SnakeGame()
         game.bot1 = bot1["class"]()
         game.bot2 = bot2["class"]()
-        game.tournament = Tournament(self.config)
+        game.config.max_rounds = 3
+        game.config.round_time = 20
+        game.tournament = Tournament(game.config)
         
         # Run the game
-        game.run()  # This will handle the match internally
+        game.run()  
         
         # Get results
         result = {
