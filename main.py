@@ -12,7 +12,7 @@ from bot import RandomBot, GreedyBot, StrategicBot, CustomBot, UserBot
 from tournament import Tournament
 
 class SnakeGame:
-    def __init__(self):
+    def __init__(self, bot_name1:str=None, bot_name2:str=None):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Snake Tournament")
@@ -50,10 +50,11 @@ class SnakeGame:
     
         # Initialize bots
         # you can add your bots here...
-        self.bot1 = StrategicBot()  # Default AI
+        self.bot1 = GreedyBot()  # Default AI
         self.bot2 = GreedyBot()     # Default AI
         # self.user_bot = UserBot()   # For human player
         
+        self._name_handling(bot_name1, bot_name2)
         # for self collision handlig
         self.snake1_advantage_time = 0
         self.snake2_advantage_time = 0
@@ -62,6 +63,17 @@ class SnakeGame:
     
         # Initialize game
         self.reset_round()
+    
+    def _name_handling(self, name1:str, name2:str):
+        if isinstance(self.bot1) == isinstance(self.bot2):
+            if name1 and name2 is not None:
+                self.bot1.name = name1
+                self.bot2.name = name2
+            
+            else:
+                self.bot1.name = "Snake1"
+                self.bot2.name = "Snake2"
+        
     
     def reset_round(self, swap_positions: bool = False) -> None:
         """Initialize or reset the current round"""
