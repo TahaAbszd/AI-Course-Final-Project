@@ -65,7 +65,7 @@ class SnakeGame:
         self.reset_round()
     
     def _name_handling(self, name1:str, name2:str):
-        if isinstance(self.bot1) == isinstance(self.bot2):
+        if type(self.bot1) == type(self.bot2):
             if name1 and name2 is not None:
                 self.bot1.name = name1
                 self.bot2.name = name2
