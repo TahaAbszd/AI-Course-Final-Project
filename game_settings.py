@@ -38,7 +38,7 @@ class GameState(Enum):
 class GameConfig:
     tournament_mode: bool = True
     max_rounds: int = 3                 # Number of round that snakes should be played for winning
-    round_time: int = 35                # Time of Game
+    round_time: int = 20                # Time of Game
     trap_count: int = 15                # Number of traps in game
     trap_penalty: int = 2               # Points lost per trap hit
     trap_segment_penalty: int = 4       # Segments lost per trap hit
@@ -348,6 +348,10 @@ class Trap(GameObject):
         self.num_traps = num_traps
         self.positions: List[Tuple[int, int]] = []
         self.traps_hit = 0
+        
+    def get_positions(self) -> List[Tuple[int, int]]:
+        """Return list of all trap positions (similar to Food class)"""
+        return self.positions.copy()
 
     def spawn(self, 
           snake_segments: Optional[List[List[int]]] = None,
