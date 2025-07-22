@@ -51,7 +51,7 @@ class SnakeGame:
         # Initialize bots
         # you can add your bots here...
         self.bot1 = StrategicBot()  # Default AI
-        self.bot2 = GreedyBot()     # Default AI
+        self.bot2 = UserBot()     # Default AI
         # self.user_bot = UserBot()   # For human player
         
         self._name_handling(bot_name1, bot_name2)
