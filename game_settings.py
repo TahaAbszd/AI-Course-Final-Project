@@ -76,6 +76,7 @@ class Snake(GameObject):
         self.color_primary = color_primary
         self.color_secondary = color_secondary
         self.config = GameConfig()
+        self.death_time = float('inf') 
         self.agent_id = agent_id
         self.reset(start_x, start_y)
         
@@ -88,6 +89,7 @@ class Snake(GameObject):
         self.length = 1
         self.alive = True
         self.score = 0
+        self.death_time = float('inf') 
         self.move_timer = 0
         self.shield_timer = 0
         self.shield_flash = 0
@@ -133,6 +135,7 @@ class Snake(GameObject):
             if (new_head[0] < 0 or new_head[0] >= GRID_WIDTH or 
                 new_head[1] < 0 or new_head[1] >= GRID_HEIGHT):
                 self.alive = False
+                self.death_time = pygame.time.get_ticks() / 1000.0  # Record death time
                 return False
 
             self.segments.appendleft(new_head)
@@ -148,6 +151,7 @@ class Snake(GameObject):
                 if new_head == segment:
                     self.alive = False
                     self.self_collision = True
+                    self.death_time = pygame.time.get_ticks() / 1000.0  # Record death time
                     return False
         return True
     
