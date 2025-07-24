@@ -236,7 +236,16 @@ class SnakeGame:
         snake1_alive = self.snake1.alive
         snake2_alive = self.snake2.alive
 
-        if snake1_alive and not snake2_alive:
+        # Modified this section to handle self-collision cases properly
+        if not snake1_alive and not snake2_alive:
+            # Both snakes are dead - check who died last
+            if self.snake1.death_time < self.snake2.death_time:
+                self.round_winner = self.snake2.agent_id
+            elif self.snake2.death_time < self.snake1.death_time:
+                self.round_winner = self.snake1.agent_id
+            else:
+                self.round_winner = None  # Both died at same time = draw
+        elif snake1_alive and not snake2_alive:
             self.round_winner = self.snake1.agent_id
         elif snake2_alive and not snake1_alive:
             self.round_winner = self.snake2.agent_id
@@ -248,9 +257,9 @@ class SnakeGame:
             else:
                 self.round_winner = None  # Draw
         else:
-            self.round_winner = None  # Both dead, no winner
+            self.round_winner = None  # Shouldn't reach here
 
-        # Record results
+        # Rest of the method remains the same...
         self.tournament.record_round(
             winner=self.round_winner,
             snake1_score=self.snake1.score,
@@ -264,17 +273,14 @@ class SnakeGame:
             time_remaining=time_remaining
         )
 
-        # Check tournament completion
         if self.tournament.is_tournament_over():
             self.final_winner = self.tournament.get_winner()
             self.tournament.save_to_csv()
             self.show_final_results()
             self.game_state = GameState.GAME_OVER
         else:
-            # Only increment round counter if we're continuing
             self.game_state = GameState.ROUND_OVER
-
-    
+  
     def draw(self) -> None:
         """Render all game elements"""
         self.screen.fill(BLACK)
