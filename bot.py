@@ -1,8 +1,8 @@
 from typing import Tuple, Optional, List
-from game_settings import Snake, Food, Direction, get_distance, is_safe
+from game_settings import Snake, Food, Direction, get_distance, is_safe, Trap
 import random
 import math
-
+from collections import deque
 
 class Bot:
     """
@@ -190,37 +190,6 @@ class CustomBot(Bot):
     def decide_move(self, snake, food, opponent=None):
         # Implement your custom logic here
         pass
-from typing import Tuple, Optional, List
-from game_settings import Snake, Food, Direction, get_distance, is_safe, Trap
-import random
-import math
-from collections import deque
-
-# سایر کلاس‌ها (Bot, RandomBot, GreedyBot, StrategicBot, CustomBot) بدون تغییر باقی می‌مانند
-# فقط کلاس UserBot اصلاح می‌شود
-from typing import Tuple, Optional, List
-from game_settings import Snake, Food, Direction, get_distance, is_safe, Trap
-import random
-import math
-from collections import deque
-
-# سایر کلاس‌ها (Bot, RandomBot, GreedyBot, StrategicBot, CustomBot) بدون تغییر باقی می‌مانند
-from typing import Tuple, Optional, List
-from game_settings import Snake, Food, Direction, get_distance, is_safe, Trap, GRID_WIDTH, GRID_HEIGHT
-import random
-import math
-from collections import deque
-
-# سایر کلاس‌ها (Bot, RandomBot, GreedyBot, StrategicBot, CustomBot) بدون تغییر باقی می‌مانند
-from typing import Tuple, Optional, List
-from game_settings import Snake, Food, Direction, get_distance, is_safe, Trap, GRID_WIDTH, GRID_HEIGHT
-import random
-import math
-from collections import deque
-
-# سایر کلاس‌ها (Bot, RandomBot, GreedyBot, StrategicBot, CustomBot) بدون تغییر باقی می‌مانند
-from typing import Optional, Tuple, List
-from collections import deque
 
 class UserBot(Bot):
     def __init__(self):
@@ -231,7 +200,7 @@ class UserBot(Bot):
         self.config['food_weight'] = 300
         self.config['mobility_weight'] = 40
         self.config['danger_weight'] = 120
-        self.config['trap_weight'] = 100
+        self.config['trap_weight'] = 150
         self.config['shield_bonus'] = 50
         self.config['opponent_trap_bonus'] = 30
 
