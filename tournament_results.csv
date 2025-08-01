@@ -1,0 +1,4 @@
+round,timestamp,winner,snake1_score,snake2_score,snake1_traps_hit,snake2_traps_hit,snake1_collisions,snake2_collisions,snake1_collision_types,snake2_collision_types,time_remaining,is_draw,is_crash,total_snake1_apples,total_snake2_apples,W/L_Ratio_Snake1,W/L_Ratio_Snake2
+1,2025-08-01T14:20:21.380462,TrapAvoider,7,15,3,1,0,0,,,3.1050000000000004,False,False,7,15,0.0,0.0
+2,2025-08-01T14:20:39.309812,TrapAvoider,5,19,2,1,0,0,,,4.1590000000000025,False,False,12,34,0.0,1.0
+3,2025-08-01T14:20:51.353771,StrategicBot,16,8,1,2,0,0,,,8.643,False,False,28,42,0.0,1.0
